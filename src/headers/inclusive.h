@@ -8,5 +8,6 @@
 #include <time.h>
 #include <string.h>
 extern volatile bool exit_flag;
+extern volatile int score;
 
 #endif

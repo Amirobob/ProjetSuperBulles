@@ -4,6 +4,7 @@
 #include <interface.h>
 
 volatile bool exit_flag = false;
+volatile int score = 0;
 
 void initialisation_allegro();
 
@@ -14,14 +15,14 @@ void time_to_exit(void) {
 int main(){
     initialisation_allegro();
 
-    BITMAP *menu_buf = create_bitmap(SCREEN_W, SCREEN_H); 
-    main_menu(menu_buf);
+    BITMAP *buffer = create_bitmap(SCREEN_W, SCREEN_H); 
+    main_menu(buffer);
     
 
 
 
 
-    destroy_bitmap(menu_buf);
+    destroy_bitmap(buffer);
     allegro_exit();
     return 0;
 }
