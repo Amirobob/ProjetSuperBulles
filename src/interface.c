@@ -171,5 +171,4 @@ void end_menu(BITMAP *buf, bool won) {
         blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
         if (exit_flag) break;
     }
-
 }
