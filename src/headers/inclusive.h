@@ -9,5 +9,10 @@
 #include <string.h>
 extern volatile bool exit_flag;
 extern volatile int score;
+extern volatile char username[20];
+extern volatile int level;
+
+#define charframes 3
+#define bossframes 2
 
 #endif

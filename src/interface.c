@@ -1,5 +1,6 @@
 //ici on gére les menus du jeu, on communiquera ici principalement avec fichiers.c, et peut être avec affichage.c pour le déclenchement du jeu.
 #include <inclusive.h>
+#include "logique.h"
 
 typedef struct {
     int x1, y1, x2, y2;
@@ -86,7 +87,13 @@ void enter_name(BITMAP *buf) {
 
         if (keypressed()) {
             c = readkey();
-            if (c == '\n') break; // Enter key, celui doit appeler le jeu principal avec le nom du joueur.
+            if (key[KEY_ENTER]){
+                strcpy(username, name);
+                level = 1;
+                score = 0;
+                startgame(buf);
+                return;
+            }
             if (c == '\b' && pos > 0) { 
                 name[--pos] = '\0';
             } else if (pos < sizeof(name) - 1 && c >= ' ' && c <= '~') {

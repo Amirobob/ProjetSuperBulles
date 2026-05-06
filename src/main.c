@@ -5,6 +5,9 @@
 
 volatile bool exit_flag = false;
 volatile int score = 0;
+volatile char username[20] = "";
+volatile int level = 1;
+
 
 void initialisation_allegro();
 
