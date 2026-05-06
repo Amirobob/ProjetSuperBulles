@@ -36,6 +36,7 @@ END_OF_MAIN();
 void initialisation_allegro() {
     allegro_init();
     set_window_title("Super Pang!");
+    install_timer();
     install_keyboard();
     install_mouse();
     set_color_depth(desktop_color_depth());
