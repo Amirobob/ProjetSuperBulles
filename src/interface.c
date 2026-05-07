@@ -55,7 +55,7 @@ void main_menu(BITMAP *buf){
         show_mouse(buf);
 
         //exit button
-        if (mouse_b & 1 && mouse_over(exit_b.x1, exit_b.y1, exit_b.x2, exit_b.y2)) break;
+        if (mouse_b & 1 && mouse_over(exit_b.x1, exit_b.y1, exit_b.x2, exit_b.y2)) return;
 
         //play button
         if (mouse_b & 1 && mouse_over(play_b.x1, play_b.y1, play_b.x2, play_b.y2)) {
@@ -69,7 +69,7 @@ void main_menu(BITMAP *buf){
 
         vsync();
         blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
-        if (exit_flag) break;
+        if (exit_flag) return;
     }
 
 }

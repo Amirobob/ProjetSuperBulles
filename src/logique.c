@@ -4,15 +4,13 @@
 #include "affichage.h"
 #include "interface.h"
 
-/* timer that ticks GAME_FPS times per second so logic runs at a steady rate
-   no matter how fast or slow rendering is. */
+/* Timer de fps qui ne dépend pas de la vitesse de rendu */
 static volatile int tick_counter = 0;
 static void tick_increment(void) { tick_counter++; }
 END_OF_FUNCTION(tick_increment);
 
 
-/* called by the menu when the player clicks "play".
-   sets up assets, then keeps replaying levels until the player quits. */
+/* Ce fonction démarre le jeu et gère la boucle principale */
 void startgame(BITMAP *buf) {
     GameAssets assets;
     if (!load_assets(&assets)) {
@@ -28,8 +26,8 @@ void startgame(BITMAP *buf) {
         int outcome = game_loop(buf, &assets, &gs);
         if (outcome < 0) break;            /* user quit */
 
-        end_menu(buf, outcome == 1);       /* end_menu shows the win/lose screen */
-        if (outcome == 1) level++;         /* won → next level. lost → replay same level. */
+        end_menu(buf, outcome == 1);       /* outcome ==1 retourne TRUE or FALSE */
+        if (outcome == 1) level++;         /* celui ici nous laisse gérer les niveaux */
         if (exit_flag) break;
     }
 
@@ -37,13 +35,12 @@ void startgame(BITMAP *buf) {
 }
 
 
-/* the main game loop.
-   keeps running until the player dies, beats the level, or quits.
-   returns 1 = won, 0 = lost, -1 = quit. */
+/* Le loop principal du jeu.
+   retourne 1 = won, 0 = lost, -1 = quit. */
 int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
     LOCK_VARIABLE(tick_counter);
     LOCK_FUNCTION(tick_increment);
-    install_int_ex(tick_increment, BPS_TO_TIMER(GAME_FPS));
+    install_int_ex(tick_increment, BPS_TO_TIMER(GAME_FPS)); 
     tick_counter = 0;
 
     int outcome = -1;
@@ -63,7 +60,7 @@ int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
             tick_counter--;
         }
 
-        /* draw once per loop iteration */
+        /* draw once per loop */
         draw_game(buf, a, gs);
         vsync();
         blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
@@ -78,10 +75,7 @@ int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
 }
 
 
-/* ---------- assets ---------- */
-
-/* load every bitmap once at game start so we don't reload them each level.
-   returns false if any bitmap fails to load — caller should bail out. */
+/* assets */
 bool load_assets(GameAssets *a) {
     char path[256];
     memset(a, 0, sizeof(*a));
@@ -109,7 +103,6 @@ bool load_assets(GameAssets *a) {
     return true;
 }
 
-/* free everything load_assets allocated. safe even if some bitmaps are NULL. */
 void free_assets(GameAssets *a) {
     for (int i = 0; i < charframes; i++) if (a->character[i]) destroy_bitmap(a->character[i]);
     for (int i = 0; i < bossframes; i++) if (a->boss[i])      destroy_bitmap(a->boss[i]);
@@ -192,11 +185,13 @@ void handle_input(GameState *gs) {
     if (key[KEY_LEFT])  { p->vx = -(float)p->speed; p->facing_right = false; }
     if (key[KEY_RIGHT]) { p->vx =  (float)p->speed; p->facing_right = true;  }
 
-    /* jump: only allowed when standing on something. KEY_UP feels natural;
-       swap to KEY_SPACE later if you want it as the jump key. */
+    /* JUMP!*/
     if (key[KEY_UP] && p->on_ground) {
-        p->vy = -12.0f;
+        p->vy -= 11.0f;
         p->on_ground = false;
+    }
+    if (key[KEY_UP] && p->vy > 0) {
+        p->vy -= 0.5f;
     }
 }
 
@@ -240,7 +235,7 @@ static bool box_hits(GameAssets *a, int x, int y, int w, int h) {
     if (is_solid_pixel(a, x_end, y))     return true;
     if (is_solid_pixel(a, x_end, y_end)) return true;
 
-    /* left + right edges (corners already covered above) */
+    /* left + right edges */
     for (int sy = y + step; sy < y_end; sy += step) {
         if (is_solid_pixel(a, x,     sy)) return true;
         if (is_solid_pixel(a, x_end, sy)) return true;
@@ -327,26 +322,40 @@ void update_upgrades(GameState *gs) {
 
 /* ---------- spawning ---------- */
 
-/* find the first inactive bullet slot and turn it into a new bullet.
-   if none are free, the shot is silently dropped — that's fine. */
 void spawn_bullet(GameState *gs, float x, float y) {
-    /* TODO: loop through gs->bullets, find one with active == false,
-             set its position, give it an upward vy (negative, like -6),
-             mark it active, and return. */
+    for (int i = 0; i < MAX_BULLETS; i++) {
+        if (gs->bullets[i].active == false) {
+            gs->bullets[i].x = x;
+            gs->bullets[i].y = y;
+            gs->bullets[i].vy = -5.0f;  /* shoot upward */
+            gs->bullets[i].active = true;
+            break;
+        }
+    }
 }
 
 void spawn_ball(GameState *gs, float x, float y, float vx, float vy, int size) {
-    /* TODO: same idea as spawn_bullet but for balls.
-             also increment gs->active_balls when you spawn one. */
+
+    for(int i = 0 ; i < MAX_BALLS ; i++){
+        if (gs->balls[i].active == false) {
+            gs->balls[i].x = x;
+            gs->balls[i].y = y;
+            gs->balls[i].vx = vx;
+            gs->balls[i].vy = vy;
+            gs->balls[i].active = true;
+            gs->active_balls++;
+            break;
+        }
+    }
+    return;
 }
 
 /* called when a bullet hits a ball. if the ball wasn't the smallest size,
    replace it with two smaller ones moving in opposite directions. */
 void split_ball(GameState *gs, int idx) {
     /* TODO:
-       - if size > 0, spawn two new balls at the same position with
-         opposite horizontal velocities and a small upward vy.
-       - mark the original ball inactive and decrement gs->active_balls. */
+       - delete old ball
+       - spawn two with opposite velocities IF the ball destroyed was big enough*/
 }
 
 void spawn_upgrade(GameState *gs, float x, float y) {
@@ -394,17 +403,15 @@ void check_collisions(GameState *gs) {
 
 /* ---------- pause ---------- */
 
-/* freeze gameplay until ESC is pressed again.
-   the timer keeps ticking but we ignore it because gs->paused is true. */
 void pause_menu(BITMAP *buf, GameState *gs) {
     gs->paused = true;
-    while (key[KEY_ESC]) { /* wait for release so we don't immediately unpause */ }
+    while (key[KEY_ESC]) { }
     while (!key[KEY_ESC] && !exit_flag) {
-        textout_centre_ex(buf, font, "PAUSED - press ESC to resume",
+        textout_centre_ex(buf, font, "Game paused",
                           SCREEN_W / 2, SCREEN_H / 2, makecol(255, 255, 255), -1);
         vsync();
         blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
     }
-    while (key[KEY_ESC]) { /* wait for release */ }
+    while (key[KEY_ESC]) { }
     gs->paused = false;
 }

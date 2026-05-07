@@ -4,7 +4,7 @@
 #include <inclusive.h>
 
 #define MAX_BULLETS   8
-#define MAX_BALLS     32
+#define MAX_BALLS     15
 #define MAX_UPGRADES  4
 #define BALL_SIZES    3
 #define GAME_FPS      60
