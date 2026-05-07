@@ -104,15 +104,16 @@ bool load_assets(GameAssets *a) {
 }
 
 void free_assets(GameAssets *a) {
-    for (int i = 0; i < charframes; i++) if (a->character[i]) destroy_bitmap(a->character[i]);
-    for (int i = 0; i < bossframes; i++) if (a->boss[i])      destroy_bitmap(a->boss[i]);
-    if (a->map)        destroy_bitmap(a->map);
-    if (a->mapalpha)   destroy_bitmap(a->mapalpha);
-    if (a->bullet)     destroy_bitmap(a->bullet);
-    if (a->boule)      destroy_bitmap(a->boule);
-    if (a->upg_speed)  destroy_bitmap(a->upg_speed);
-    if (a->upg_health) destroy_bitmap(a->upg_health);
-    if (a->upg_bullet) destroy_bitmap(a->upg_bullet);
+    /* destroy_bitmap accepts NULL */
+    for (int i = 0; i < charframes; i++) destroy_bitmap(a->character[i]);
+    for (int i = 0; i < bossframes; i++) destroy_bitmap(a->boss[i]);
+    destroy_bitmap(a->map);
+    destroy_bitmap(a->mapalpha);
+    destroy_bitmap(a->bullet);
+    destroy_bitmap(a->boule);
+    destroy_bitmap(a->upg_speed);
+    destroy_bitmap(a->upg_health);
+    destroy_bitmap(a->upg_bullet);
 }
 
 
@@ -142,6 +143,7 @@ void init_player(Player *p, GameAssets *a) {
     p->facing_right = true;
     p->shoot_held = false;
     p->iframes = 0;
+    p->drop_timer = 0;
 }
 
 
@@ -150,10 +152,9 @@ void init_player(Player *p, GameAssets *a) {
 void init_level(GameState *gs, GameAssets *a, int level_num) {
     init_player(&gs->player, a);
 
-    /* clear every entity slot — the demo doesn't spawn anything else yet. */
-    for (int i = 0; i < MAX_BULLETS;  i++) gs->bullets[i].active  = false;
-    for (int i = 0; i < MAX_BALLS;    i++) gs->balls[i].active    = false;
-    for (int i = 0; i < MAX_UPGRADES; i++) gs->upgrades[i].active = false;
+    memset(gs->bullets,  0, sizeof(gs->bullets));
+    memset(gs->balls,    0, sizeof(gs->balls));
+    memset(gs->upgrades, 0, sizeof(gs->upgrades));
     gs->boss.active = false;
     gs->active_balls = 0;
     gs->paused = false;
@@ -185,60 +186,51 @@ void handle_input(GameState *gs) {
     if (key[KEY_LEFT])  { p->vx = -(float)p->speed; p->facing_right = false; }
     if (key[KEY_RIGHT]) { p->vx =  (float)p->speed; p->facing_right = true;  }
 
-    /* JUMP!*/
-    if (key[KEY_UP] && p->on_ground) {
-        p->vy -= 11.0f;
-        p->on_ground = false;
+    if (key[KEY_UP]) {
+        if (p->on_ground) { p->vy -= 11.0f; p->on_ground = false; }
+        else if (p->vy > 0) p->vy -= 0.5f;  /* held = glide-fall */
     }
-    if (key[KEY_UP] && p->vy > 0) {
-        p->vy -= 0.5f;
+
+    /* drop through red platforms */
+    if (key[KEY_DOWN] && p->on_ground) {
+        p->drop_timer = 15;
+        p->on_ground = false;
     }
 }
 
 
 /* ---------- updates: each runs once per tick ---------- */
 
-/* sample one pixel of mapalpha. the map is centred horizontally at the top of
-   the screen, so we translate screen coords back into mapalpha-local coords.
-   anything outside the mapalpha bitmap is treated as solid so the player
-   can't walk off the level. */
-static bool is_solid_pixel(GameAssets *a, int sx, int sy) {
-    BITMAP *m  = a->mapalpha;
-    /* anchor the alpha to where the visible map is drawn, not to its own size.
-       this way even if mapalpha and map differ in width, collisions line up
-       with what the player sees. */
-    int    ox  = SCREEN_W / 2 - a->map->w / 2;
-    int    lx  = sx - ox;
-    int    ly  = sy;
+/* mapalpha convention: black=wall, white=empty, red=platform (player only). */
+static bool is_solid_pixel(GameAssets *a, int sx, int sy, bool platforms_solid) {
+    BITMAP *m = a->mapalpha;
+    int ox = SCREEN_W / 2 - a->map->w / 2;
+    int lx = sx - ox, ly = sy;
     if (lx < 0 || lx >= m->w || ly < 0 || ly >= m->h) return true;
-    /* mapalpha convention: black = wall, white = walkable.
-       compare against black in the bitmap's own color depth so this works
-       whether mapalpha is loaded as 8/16/24/32-bit. */
-    return getpixel(m, lx, ly) == makecol_depth(bitmap_color_depth(m), 0, 0, 0);
+
+    int depth = bitmap_color_depth(m);
+    int c     = getpixel(m, lx, ly);
+    if (c == makecol_depth(depth, 0, 0, 0)) return true;
+    if (platforms_solid && c == makecol_depth(depth, 255, 0, 0)) return true;
+    return false;
 }
 
-/* sample the perimeter of a w×h box at screen-position (x,y).
-   step controls the spacing between samples — anything smaller than `step`
-   pixels thick can sneak between samples, so set it ≤ the thinnest platform
-   you expect. corners-only (the original 4-point check) was missing thin
-   platforms when the player walked into them sideways. */
-static bool box_hits(GameAssets *a, int x, int y, int w, int h) {
+/* perimeter sample of a w×h box. step ≤ thinnest platform you expect. */
+static bool box_hits(GameAssets *a, int x, int y, int w, int h, bool platforms_solid) {
     const int step  = 4;
     const int x_end = x + w - 1;
     const int y_end = y + h - 1;
 
-    /* top + bottom edges */
     for (int sx = x; sx < x_end; sx += step) {
-        if (is_solid_pixel(a, sx, y))     return true;
-        if (is_solid_pixel(a, sx, y_end)) return true;
+        if (is_solid_pixel(a, sx, y,     platforms_solid)) return true;
+        if (is_solid_pixel(a, sx, y_end, platforms_solid)) return true;
     }
-    if (is_solid_pixel(a, x_end, y))     return true;
-    if (is_solid_pixel(a, x_end, y_end)) return true;
+    if (is_solid_pixel(a, x_end, y,     platforms_solid)) return true;
+    if (is_solid_pixel(a, x_end, y_end, platforms_solid)) return true;
 
-    /* left + right edges */
     for (int sy = y + step; sy < y_end; sy += step) {
-        if (is_solid_pixel(a, x,     sy)) return true;
-        if (is_solid_pixel(a, x_end, sy)) return true;
+        if (is_solid_pixel(a, x,     sy, platforms_solid)) return true;
+        if (is_solid_pixel(a, x_end, sy, platforms_solid)) return true;
     }
     return false;
 }
@@ -247,29 +239,27 @@ void update_player(Player *p, GameAssets *a) {
     BITMAP *spr = a->character[0];
     int hw = spr->w / 2;
     int hh = spr->h / 2;
+    bool platforms_solid = (p->drop_timer == 0);
 
-    /* horizontal: try the move; if the new position would land in a wall,
-       reject it. (axis-separated tests stop the player from snagging on
-       corners when they're walking and falling at the same time.) */
+    /* horizontal */
     {
         float new_x = p->x + p->vx;
         int   left  = (int)new_x - hw;
         int   top   = (int)p->y  - hh;
-        if (!box_hits(a, left, top, spr->w, spr->h))
+        if (!box_hits(a, left, top, spr->w, spr->h, platforms_solid))
             p->x = new_x;
     }
 
-    /* gravity + cap on fall speed so we don't tunnel through thin floors */
+    /* gravity, capped to avoid tunneling through thin floors */
     p->vy += 0.5f;
     if (p->vy > 12.0f) p->vy = 12.0f;
 
-    /* vertical: same idea. if the move is blocked while falling, we landed —
-       set on_ground and zero vy. if blocked while rising, we hit a ceiling. */
+    /* vertical */
     {
         float new_y = p->y + p->vy;
         int   left  = (int)p->x  - hw;
         int   top   = (int)new_y - hh;
-        if (box_hits(a, left, top, spr->w, spr->h)) {
+        if (box_hits(a, left, top, spr->w, spr->h, platforms_solid)) {
             if (p->vy > 0) p->on_ground = true;
             p->vy = 0;
         } else {
@@ -278,12 +268,12 @@ void update_player(Player *p, GameAssets *a) {
         }
     }
 
-    /* walk animation: cycle frames while moving */
     if (p->vx != 0 && ++p->frame_timer >= 8) {
         p->frame = (p->frame + 1) % charframes;
         p->frame_timer = 0;
     }
-    if (p->iframes > 0) p->iframes--;
+    if (p->iframes    > 0) p->iframes--;
+    if (p->drop_timer > 0) p->drop_timer--;
 }
 
 void update_bullets(GameState *gs) {
@@ -335,9 +325,8 @@ void spawn_bullet(GameState *gs, float x, float y) {
 }
 
 void spawn_ball(GameState *gs, float x, float y, float vx, float vy, int size) {
-
-    for(int i = 0 ; i < MAX_BALLS ; i++){
-        if (gs->balls[i].active == false) {
+    for (int i = 0; i < MAX_BALLS; i++) {
+        if (!gs->balls[i].active) {
             gs->balls[i].x = x;
             gs->balls[i].y = y;
             gs->balls[i].vx = vx;
@@ -347,7 +336,6 @@ void spawn_ball(GameState *gs, float x, float y, float vx, float vy, int size) {
             break;
         }
     }
-    return;
 }
 
 /* called when a bullet hits a ball. if the ball wasn't the smallest size,

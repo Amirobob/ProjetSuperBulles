@@ -40,7 +40,7 @@ void initialisation_allegro() {
     install_keyboard();
     install_mouse();
     set_color_depth(desktop_color_depth());
-    if (set_gfx_mode(GFX_AUTODETECT_WINDOWED, 800, 600, 0, 0) != 0) {
+    if (set_gfx_mode(GFX_AUTODETECT_WINDOWED, 1080, 720, 0, 0) != 0) {
         allegro_message("probleme mode graphique");
         allegro_exit();
         exit(EXIT_FAILURE);
