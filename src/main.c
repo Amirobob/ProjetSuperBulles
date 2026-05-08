@@ -1,6 +1,4 @@
 #include <inclusive.h>
-
-
 #include <interface.h>
 
 volatile bool exit_flag = false;
@@ -8,30 +6,9 @@ volatile int score = 0;
 volatile char username[20] = "";
 volatile int level = 1;
 
-
-void initialisation_allegro();
-
 void time_to_exit(void) {
     exit_flag = true;
 }
-
-int main(){
-    initialisation_allegro();
-
-    BITMAP *buffer = create_bitmap(SCREEN_W, SCREEN_H); 
-    main_menu(buffer);
-    
-
-
-
-
-    destroy_bitmap(buffer);
-    allegro_exit();
-    return 0;
-}
-END_OF_MAIN();
-
-
 
 void initialisation_allegro() {
     allegro_init();
@@ -48,3 +25,15 @@ void initialisation_allegro() {
     enable_triple_buffer();
     set_close_button_callback(time_to_exit);
 }
+
+int main(){
+    initialisation_allegro();
+
+    BITMAP *buffer = create_bitmap(SCREEN_W, SCREEN_H); 
+    main_menu(buffer);
+    
+    destroy_bitmap(buffer);
+    allegro_exit();
+    return 0;
+}
+END_OF_MAIN();
