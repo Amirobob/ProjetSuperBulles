@@ -25,6 +25,7 @@ typedef struct {
     bool  shoot_held;
     int   iframes;
     int   drop_timer;   /* >0: falling through red platforms */
+    int   shoot_cooldown;
 } Player;
 
 typedef struct {

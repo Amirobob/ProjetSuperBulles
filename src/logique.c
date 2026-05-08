@@ -144,6 +144,7 @@ void init_player(Player *p, GameAssets *a) {
     p->shoot_held = false;
     p->iframes = 0;
     p->drop_timer = 0;
+    p->shoot_cooldown = 0;
 }
 
 
@@ -195,6 +196,11 @@ void handle_input(GameState *gs) {
     if (key[KEY_DOWN] && p->on_ground) {
         p->drop_timer = 15;
         p->on_ground = false;
+    }
+
+    if (key[KEY_SPACE] && p->shoot_cooldown <= 0) {
+        spawn_bullet(gs, p->x, p->y);
+        p->shoot_cooldown = 10;
     }
 }
 
@@ -274,11 +280,19 @@ void update_player(Player *p, GameAssets *a) {
     }
     if (p->iframes    > 0) p->iframes--;
     if (p->drop_timer > 0) p->drop_timer--;
+    if (p->shoot_cooldown > 0) p->shoot_cooldown--;
 }
 
 void update_bullets(GameState *gs) {
-    /* TODO: for each active bullet, add vy to y.
-             if y < 0 (off the top of the screen), mark it inactive. */
+    for (int i = 0; i < MAX_BULLETS; i++) {
+        if (gs->bullets[i].active) {
+            gs->bullets[i].y += gs->bullets[i].vy;
+            /* désactiver la bullet si elle sort du haut de l'écran */
+            if (gs->bullets[i].y < -50) {
+                gs->bullets[i].active = false;
+            }
+        }
+    }
 }
 
 void update_balls(GameState *gs) {
