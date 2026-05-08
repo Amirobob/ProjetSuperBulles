@@ -40,13 +40,8 @@ void main_menu(BITMAP *buf){
     rectangle exit_b = {SCREEN_W / 2 - SCREEN_W / 3, 6 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 7 * SCREEN_H / 8};
 
     while(1){
-        
-        
-        
         clear_to_color(buf, makecol(0, 20, 20));
-
-
-
+        
         make_button(buf, exit_b.x1, exit_b.y1, exit_b.x2, exit_b.y2, "exit", mouse_over(exit_b.x1, exit_b.y1, exit_b.x2, exit_b.y2));
         make_button(buf, play_b.x1, play_b.y1, play_b.x2, play_b.y2, "play", mouse_over(play_b.x1, play_b.y1, play_b.x2, play_b.y2));
         make_button(buf, load_b.x1, load_b.y1, load_b.x2, load_b.y2, "load game", mouse_over(load_b.x1, load_b.y1, load_b.x2, load_b.y2));

@@ -57,8 +57,11 @@ void draw_player(BITMAP *buf, GameAssets *a, Player *p) {
 
 
 void draw_bullets(BITMAP *buf, GameAssets *a, GameState *gs) {
-    /* TODO: for each active bullet, draw_sprite(buf, a->bullet, ...).
-             centre the sprite on the bullet's x,y. */
+    BITMAP *spr = a->character[gs->frame];
+    int x = (int)p->x - spr->w / 2;   /* p->x/p->y is the centre, draw_sprite wants top-left */
+    int y = (int)p->y - spr->h / 2;
+    if (p->facing_right) draw_sprite(buf, spr, x, y);
+    else                 draw_sprite_h_flip(buf, spr, x, y);
 }
 
 
