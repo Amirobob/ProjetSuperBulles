@@ -1,4 +1,3 @@
-
 #ifndef FICHIERS_H
 #define FICHIERS_H
 #include <stdbool.h>
@@ -11,7 +10,7 @@ typedef enum {
 } LoadResult;
 // Sauvegarde ou met a jour la partie d'un joueur.
 // Seule la meilleure progression (niveau le plus eleve) est conservee.
-// Retourne true 
+// Retourne true en cas de succes, false si le fichier est plein ou inaccessible.
 bool sauvegarder_partie(const char *pseudo, int niveau, int score);
 // Charge la sauvegarde du joueur identifie par pseudo.
 LoadResult charger_partie(const char *pseudo, int *niveau_out, int *score_out);

@@ -1,6 +1,6 @@
 //gestion des fichiers, chargement/sauvegarde du jeu par pseudo du joueur
 #include <inclusive.h>
-#include <fichiers.h>
+#include "fichiers.h"
 #define SAVE_FILE "sauvegardes.txt"
 #define MAX_NAME_LEN 20
 #define MAX_SAVES 50
@@ -12,7 +12,8 @@ typedef struct {
 } SaveEntry;
 
 // Fonctions utilitaires internes (non exposees dans le .h)
-// Charge toutes les sauvegardes 
+// Charge toutes les sauvegardes. Retourne -1 si le fichier contient plus
+// de `max` entrees (refus d'ecrire pour ne pas tronquer les donnees).
 static int charger_toutes_sauvegardes(SaveEntry entries[], int max) {
     FILE *f = fopen(SAVE_FILE, "r");
     if (!f) return 0;   // Pas de fichier = aucune sauvegarde, ce n'est pas une erreur
@@ -25,8 +26,10 @@ static int charger_toutes_sauvegardes(SaveEntry entries[], int max) {
                   &entries[count].score) == 3) {
         count++;
     }
+    char dummy;
+    bool overflow = (count == max && fscanf(f, " %c", &dummy) == 1);
     fclose(f);
-    return count;
+    return overflow ? -1 : count;
 }
 
 // Ecrit toutes les sauvegardes du tableau dans le fichier (ecrasement complet).
@@ -46,7 +49,7 @@ static bool ecrire_toutes_sauvegardes(const SaveEntry entries[], int count) {
 bool sauvegarder_partie(const char *pseudo, int niveau, int score) {
     SaveEntry entries[MAX_SAVES];
     int count = charger_toutes_sauvegardes(entries, MAX_SAVES);
-    if (count < 0) count = 0;
+    if (count < 0) return false;  // fichier plein, on refuse pour ne rien perdre
 
     // Cherche si le pseudo existe
     bool trouve = false;
@@ -80,7 +83,6 @@ LoadResult charger_partie(const char *pseudo, int *niveau_out, int *score_out) {
     if (count < 0) return LOAD_ERROR;
 
     for (int i = 0; i < count; i++) {
-    for (int i = 0; i < count; i++) {
         if (strcmp(entries[i].pseudo, pseudo) == 0) {
             *niveau_out = entries[i].niveau;
             *score_out  = entries[i].score;
@@ -93,7 +95,7 @@ LoadResult charger_partie(const char *pseudo, int *niveau_out, int *score_out) {
 bool supprimer_sauvegarde(const char *pseudo) {
     SaveEntry entries[MAX_SAVES];
     int count = charger_toutes_sauvegardes(entries, MAX_SAVES);
-    if (count <= 0) return false;
+    if (count <= 0) return false;  // 0 = vide, -1 = trop d'entrees
 
     int idx = -1;
     for (int i = 0; i < count; i++) {
