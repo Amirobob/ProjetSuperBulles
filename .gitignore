@@ -10,4 +10,6 @@
 *.pif
 *.vb
 *.wsf
+dist/
+
 # End of ignore

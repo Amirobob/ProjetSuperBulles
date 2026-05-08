@@ -187,7 +187,7 @@ void handle_input(GameState *gs) {
     if (key[KEY_RIGHT]) { p->vx =  (float)p->speed; p->facing_right = true;  }
 
     if (key[KEY_UP]) {
-        if (p->on_ground) { p->vy -= 11.0f; p->on_ground = false; }
+        if (p->on_ground) { p->vy -= 11.5f; p->on_ground = false; }
         else if (p->vy > 0) p->vy -= 0.5f;  /* held = glide-fall */
     }
 
