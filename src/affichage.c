@@ -23,6 +23,7 @@ void draw_game(BITMAP *buf, GameAssets *a, GameState *gs) {
     blit(a->map, buf, 0, 0, SCREEN_W/2 - a->map->w/2, 0, a->map->w, a->map->h);
     draw_player(buf, a, &gs->player);
     draw_bullets(buf, a, gs);
+    draw_balls(buf, a, gs);
 
     /* debug overlay — remove once movement works.
        y/vy: physics state. on_ground: has the player landed?
@@ -69,9 +70,15 @@ void draw_bullets(BITMAP *buf, GameAssets *a, GameState *gs) {
 
 
 void draw_balls(BITMAP *buf, GameAssets *a, GameState *gs) {
-    /* TODO: for each active ball, scale the boule sprite by ball->size
-             so bigger balls look bigger. stretch_sprite(buf, a->boule,
-             top-left x, top-left y, scaled width, scaled height). */
+    for (int i = 0; i < MAX_BALLS; i++) {
+        if (gs->balls[i].active) {
+            int x = (int)gs->balls[i].x;
+            int y = (int)gs->balls[i].y;
+            int size = 40;  /* taille simple des balles */
+            
+            stretch_sprite(buf, a->boule, x - size/2, y - size/2, size, size);
+        }
+    }
 }
 
 

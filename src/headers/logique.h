@@ -78,6 +78,7 @@ typedef struct {
     Upgrade  upgrades[MAX_UPGRADES];
     int      active_balls;
     bool     paused;
+    int      pipe_spawn_timer[3];
 } GameState;
 
 /* entry point called by the menu */
@@ -108,6 +109,7 @@ void update_upgrades(GameState *gs);
 void spawn_bullet(GameState *gs, float x, float y);
 void spawn_ball(GameState *gs, float x, float y, float vx, float vy, int size);
 void split_ball(GameState *gs, int idx);
+void spawn_from_pipe(GameState *gs, float pipe_x, float pipe_y);  /* ← AJOUTER */
 void spawn_upgrade(GameState *gs, float x, float y);
 void apply_upgrade(Player *p, UpgradeType t);
 
