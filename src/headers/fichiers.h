@@ -1,0 +1,24 @@
+
+#ifndef FICHIERS_H
+#define FICHIERS_H
+#include <stdbool.h>
+#include <allegro.h>
+// Codes de retour pour charger_partie()
+typedef enum {
+    LOAD_OK        = 0,  
+    LOAD_NOT_FOUND = 1,   
+    LOAD_ERROR     = 2   
+} LoadResult;
+// Sauvegarde ou met a jour la partie d'un joueur.
+// Seule la meilleure progression (niveau le plus eleve) est conservee.
+// Retourne true 
+bool sauvegarder_partie(const char *pseudo, int niveau, int score);
+// Charge la sauvegarde du joueur identifie par pseudo.
+LoadResult charger_partie(const char *pseudo, int *niveau_out, int *score_out);
+// Supprime la sauvegarde d'un joueur.
+// Retourne true si une entree a effectivement ete supprimee.
+bool supprimer_sauvegarde(const char *pseudo);
+// Affiche un message d'erreur a l'ecran quand aucune sauvegarde n'est trouvee.
+// A appeler depuis interface.c apres un LOAD_NOT_FOUND.
+void afficher_erreur_chargement(BITMAP *buf, const char *pseudo);
+#endif // FICHIERS_H
