@@ -40,12 +40,32 @@ void startgame(BITMAP *buf, const char *initial_username, int initial_level, int
 }
 
 
+/* freezes the world and overlays "3 / 2 / 1 / Go!" so the player can scout the level
+   before physics starts. called from game_loop before install_int_ex. */
+static void countdown_intro(BITMAP *buf, GameAssets *a, GameState *gs) {
+    static const char * const steps[] = {"3", "2", "1", "Go!"};
+
+    for (int i = 0; i < 4 && !exit_flag; i++) {
+        draw_game(buf, a, gs);
+        textout_centre_ex(buf, font, steps[i],
+                          SCREEN_W / 2, SCREEN_H / 2,
+                          makecol(255, 255, 80), -1);
+        blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
+
+        /* hand-roll the wait so we can bail out instantly on close-button. */
+        for (int frames = 0; frames < 50 && !exit_flag; frames++) vsync();
+    }
+}
+
+
 /* Le loop principal du jeu.
    retourne 1 = won, 0 = lost, -1 = quit. */
 int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
+    countdown_intro(buf, a, gs);
+
     LOCK_VARIABLE(tick_counter);
     LOCK_FUNCTION(tick_increment);
-    install_int_ex(tick_increment, BPS_TO_TIMER(GAME_FPS)); 
+    install_int_ex(tick_increment, BPS_TO_TIMER(GAME_FPS));
     tick_counter = 0;
 
     int outcome = -1;
@@ -71,7 +91,9 @@ int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
         vsync();
         blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
 
-        if (key[KEY_ESC])           pause_menu(buf, gs);
+        if (key[KEY_ESC]) {
+            if (pause_menu(buf, gs)) { outcome = -1; break; }
+        }
         if (is_player_dead(gs))    { outcome = 0; break; }
         if (gs->level_timer <= 0)  { outcome = 0; break; }   /* timeout = loss */
         if (is_level_complete(gs)) {
@@ -167,16 +189,16 @@ void init_player(Player *p, GameAssets *a) {
 static void populate_level(GameState *gs, int level_num) {
     switch (level_num) {
         case 1:
-            spawn_ball(gs, SCREEN_W / 2.0f, 150.0f, 2.0f, 0.0f, 1);
+            spawn_ball(gs, SCREEN_W / 2.0f, 170.0f, 2.0f, 0.0f, 1);
             break;
 
         case 2:
-            spawn_ball(gs, SCREEN_W / 2.0f - 200.0f, 150.0f,  2.0f, 0.0f, 2);
-            spawn_ball(gs, SCREEN_W / 2.0f + 200.0f, 150.0f, -2.0f, 0.0f, 2);
+            spawn_ball(gs, SCREEN_W / 2.0f - 200.0f, 170.0f,  2.0f, 0.0f, 2);
+            spawn_ball(gs, SCREEN_W / 2.0f + 200.0f, 170.0f, -2.0f, 0.0f, 2);
             break;
 
         case 3:
-            spawn_ball(gs, SCREEN_W / 2.0f,         150.0f,  2.0f, 0.0f, 1);
+            spawn_ball(gs, SCREEN_W / 2.0f,         170.0f,  2.0f, 0.0f, 1);
             spawn_ball(gs, SCREEN_W / 2.0f - 150.0f, 200.0f, -2.0f, 0.0f, 2);
             spawn_ball(gs, SCREEN_W / 2.0f + 150.0f, 200.0f,  2.0f, 0.0f, 3);
             break;
@@ -650,17 +672,4 @@ void check_collisions(GameState *gs, GameAssets *a) {
 }
 
 
-/* ---------- pause ---------- */
-
-void pause_menu(BITMAP *buf, GameState *gs) {
-    gs->paused = true;
-    while (key[KEY_ESC]) { }
-    while (!key[KEY_ESC] && !exit_flag) {
-        textout_centre_ex(buf, font, "Game paused",
-                          SCREEN_W / 2, SCREEN_H / 2, makecol(255, 255, 255), -1);
-        vsync();
-        blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
-    }
-    while (key[KEY_ESC]) { }
-    gs->paused = false;
-}
+/* pause_menu now lives in interface.c alongside the other menus. */

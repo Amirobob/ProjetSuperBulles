@@ -74,30 +74,77 @@ void main_menu(BITMAP *buf){
 }
 
 
+/* "name has at least one alphabetic character." used to reject pure-digit names. */
+static bool has_letter(const char *s) {
+    for (; *s; s++) {
+        if ((*s >= 'a' && *s <= 'z') || (*s >= 'A' && *s <= 'Z')) return true;
+    }
+    return false;
+}
+
+static bool has_spaces(const char *s) {
+    for (; *s; s++) {
+        if (*s == ' ') return true;
+    }
+    return false;
+}
+
 void enter_name(BITMAP *buf) {
     char name[20] = "", c;
     unsigned int pos = 0;
+    bool valid = false;
+    const char *err_msg = "";   /* shown at bottom in red when non-empty */
+
     while(1) {
         clear_to_color(buf, makecol(0, 20, 20));
         rect(buf, SCREEN_W / 2 - 100, SCREEN_H / 2 - 10, SCREEN_W / 2 + 100, SCREEN_H / 2 + 19, makecol(255, 255, 255));
         textout_centre_ex(buf, font, "Enter your name:", SCREEN_W / 2, SCREEN_H / 3, makecol(255, 255, 255), -1);
         textout_centre_ex(buf, font, name, SCREEN_W / 2, SCREEN_H / 2, makecol(255, 255, 255), -1);
+        if (err_msg[0]) {
+            textout_centre_ex(buf, font, err_msg,
+                              SCREEN_W / 2, SCREEN_H / 2 - 30,
+                              makecol(255, 80, 80), -1);
+        }
         show_mouse(buf);
 
         if (keypressed()) {
             c = readkey();
-            if (key[KEY_ENTER]){
-                strcpy(username, name);
-                level = 1;
-                score = 0;
-                startgame(buf, username, level, score);
-                return;
-            }
-            if (c == '\b' && pos > 0) { 
+
+            if (key[KEY_ENTER]) {
+                if (valid) {
+                    strcpy((char *)username, name);
+                    level = 1;
+                    score = 0;
+                    startgame(buf, username, level, score);
+                    return;
+                }
+                /* else: silently ignore Enter while the name is invalid. */
+            } else if (c == '\b' && pos > 0) {
                 name[--pos] = '\0';
             } else if (pos < sizeof(name) - 1 && c >= ' ' && c <= '~') {
                 name[pos++] = c;
                 name[pos] = '\0';
+            }
+
+            /* re-validate after every keystroke. */
+            if (pos == 0) {
+                valid = false;
+                err_msg = "";   /* nothing typed yet, no need to nag */
+            } else if (!has_letter(name)) {
+                valid = false;
+                err_msg = "Le nom doit contenir au moins une lettre.";
+            } else if (has_spaces(name)) {
+                valid = false;
+                err_msg = "Le nom ne doit pas contenir d'espaces.";
+            } else {
+                int dummy_lvl, dummy_score;
+                if (charger_partie(name, &dummy_lvl, &dummy_score) == LOAD_OK) {
+                    valid = false;
+                    err_msg = "Ce nom est deja pris.";
+                } else {
+                    valid = true;
+                    err_msg = "";
+                }
             }
         }
 
@@ -144,6 +191,61 @@ void find_save_file(BITMAP *buf) {
     }
 }
 
+
+
+/* shown when the player presses ESC mid-game.
+   returns true if they want to quit the current game (caller treats as outcome -1).
+   sets exit_flag if they want to quit the entire app. */
+bool pause_menu(BITMAP *buf, GameState *gs) {
+    gs->paused = true;
+
+    rectangle continue_b  = {SCREEN_W / 2 - SCREEN_W / 3, 2 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 3 * SCREEN_H / 8};
+    rectangle quit_game_b = {SCREEN_W / 2 - SCREEN_W / 3, 4 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 5 * SCREEN_H / 8};
+    rectangle quit_app_b  = {SCREEN_W / 2 - SCREEN_W / 3, 6 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 7 * SCREEN_H / 8};
+
+    /* drain the ESC press that opened us, so it doesn't immediately resume us. */
+    while (key[KEY_ESC]) { }
+
+    bool resume    = false;
+    bool quit_game = false;
+
+    while (!resume && !quit_game && !exit_flag) {
+        clear_to_color(buf, makecol(0, 0, 30));
+        textout_centre_ex(buf, font, "Game paused",
+                          SCREEN_W / 2, SCREEN_H / 8,
+                          makecol(255, 255, 255), -1);
+
+        make_button(buf, continue_b.x1, continue_b.y1, continue_b.x2, continue_b.y2,
+                    "continue",  mouse_over(continue_b.x1, continue_b.y1, continue_b.x2, continue_b.y2));
+        make_button(buf, quit_game_b.x1, quit_game_b.y1, quit_game_b.x2, quit_game_b.y2,
+                    "quit game", mouse_over(quit_game_b.x1, quit_game_b.y1, quit_game_b.x2, quit_game_b.y2));
+        make_button(buf, quit_app_b.x1, quit_app_b.y1, quit_app_b.x2, quit_app_b.y2,
+                    "quit app",  mouse_over(quit_app_b.x1, quit_app_b.y1, quit_app_b.x2, quit_app_b.y2));
+
+        show_mouse(buf);
+
+        if (key[KEY_ESC]) resume = true;
+
+        if (mouse_b & 1) {
+            if      (mouse_over(continue_b.x1,  continue_b.y1,  continue_b.x2,  continue_b.y2))  resume    = true;
+            else if (mouse_over(quit_game_b.x1, quit_game_b.y1, quit_game_b.x2, quit_game_b.y2)) quit_game = true;
+            else if (mouse_over(quit_app_b.x1,  quit_app_b.y1,  quit_app_b.x2,  quit_app_b.y2))  {
+                exit_flag = true;
+                quit_game = true;
+            }
+        }
+
+        vsync();
+        blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
+    }
+
+    /* don't carry the dismiss input into the resumed game (or the next menu). */
+    while (key[KEY_ESC])     { }
+    while (mouse_b & 1)      vsync();
+
+    gs->paused = false;
+    return quit_game;
+}
 
 
 void end_menu(BITMAP *buf, bool won) {

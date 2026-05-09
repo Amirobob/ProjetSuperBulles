@@ -124,7 +124,10 @@ void apply_upgrade(Player *p, UpgradeType t);
 
 /* collisions + pause */
 void check_collisions(GameState *gs, GameAssets *a);
-void pause_menu(BITMAP *buf, GameState *gs);
+
+/* returns true if the player asked to quit the current game (back to main menu).
+   sets exit_flag if they want to quit the whole app. */
+bool pause_menu(BITMAP *buf, GameState *gs);
 
 
 
