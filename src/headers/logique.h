@@ -22,7 +22,7 @@ typedef struct {
     int   frame;
     int   frame_timer;
     bool  facing_right;
-    bool  shoot_held;
+    int   shoot_cooldown;
     int   iframes;
     int   drop_timer;   /* >0: falling through red platforms */
 } Player;
@@ -98,8 +98,11 @@ bool is_player_dead(const GameState *gs);
 /* per-tick updates */
 void handle_input(GameState *gs);
 void update_player(Player *p, GameAssets *a);
-void update_bullets(GameState *gs);
-void update_balls(GameState *gs);
+void update_bullets(GameState *gs, GameAssets *a);
+void update_balls(GameState *gs, GameAssets *a);
+
+/* visual + collision radius of a ball, derived from its size tier. */
+int ball_radius(int size);
 void update_boss(GameState *gs);
 void update_upgrades(GameState *gs);
 
@@ -113,5 +116,11 @@ void apply_upgrade(Player *p, UpgradeType t);
 /* collisions + pause */
 void check_collisions(GameState *gs);
 void pause_menu(BITMAP *buf, GameState *gs);
+
+
+
+
+
+
 
 #endif

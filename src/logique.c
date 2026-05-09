@@ -51,8 +51,8 @@ int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
             handle_input(gs);
             if (!gs->paused) {
                 update_player(&gs->player, a);
-                update_bullets(gs);
-                update_balls(gs);
+                update_bullets(gs, a);
+                update_balls(gs, a);
                 update_boss(gs);
                 update_upgrades(gs);
                 check_collisions(gs);
@@ -129,8 +129,8 @@ void init_player(Player *p, GameAssets *a) {
     int map_left = SCREEN_W / 2 - a->map->w / 2;
     int map_top  = 0;
 
-    p->x = map_left + a->map->w / 2.0f;        /* horizontal centre of the map */
-    p->y = map_top  + a->map->h - 200.0f;       /* near the bottom — small gap so gravity can pull them onto the floor */
+    p->x = map_left + 80.0f;        
+    p->y = map_top  + a->map->h - 100.0f;  
 
     p->vx = 0;
     p->vy = 0;
@@ -141,7 +141,7 @@ void init_player(Player *p, GameAssets *a) {
     p->frame = 0;
     p->frame_timer = 0;
     p->facing_right = true;
-    p->shoot_held = false;
+    p->shoot_cooldown = 0;
     p->iframes = 0;
     p->drop_timer = 0;
 }
@@ -195,6 +195,17 @@ void handle_input(GameState *gs) {
     if (key[KEY_DOWN] && p->on_ground) {
         p->drop_timer = 15;
         p->on_ground = false;
+    }
+
+    if (key[KEY_SPACE] && p->shoot_cooldown == 0) {
+        if (p->double_shot) {
+            spawn_bullet(gs, p->x + 5, p->y - 10);
+            spawn_bullet(gs, p->x - 5, p->y - 10);
+        }
+        else {
+            spawn_bullet(gs, p->x, p->y - 10);
+        }
+        p->shoot_cooldown = GAME_FPS / 2;
     }
 }
 
@@ -272,27 +283,63 @@ void update_player(Player *p, GameAssets *a) {
         p->frame = (p->frame + 1) % charframes;
         p->frame_timer = 0;
     }
-    if (p->iframes    > 0) p->iframes--;
-    if (p->drop_timer > 0) p->drop_timer--;
+    if (p->iframes        > 0) p->iframes--;
+    if (p->drop_timer     > 0) p->drop_timer--;
+    if (p->shoot_cooldown > 0) p->shoot_cooldown--;
 }
 
-void update_bullets(GameState *gs) {
-    /* TODO: for each active bullet, add vy to y.
-             if y < 0 (off the top of the screen), mark it inactive. */
+void update_bullets(GameState *gs, GameAssets *a) {
+    for (int i = 0; i < MAX_BULLETS; i++) {
+        if (gs->bullets[i].active) {
+            gs->bullets[i].y += gs->bullets[i].vy;
+            if (gs->bullets[i].y < 0) gs->bullets[i].active = false;
+            if (is_solid_pixel(a, (int)gs->bullets[i].x, (int)gs->bullets[i].y, false)) gs->bullets[i].active = false;
+        }
+    }
 }
 
-void update_balls(GameState *gs) {
-    /* TODO: for each active ball:
-       - apply gravity to vy (vy += small constant, e.g. 0.15).
-       - apply vx to x and vy to y.
-       - bounce off the walls: if x is out of bounds, flip vx.
-       - bounce off the floor: if y is past the floor, set y to floor and
-         give vy a strong upward push. you can keep them bouncing forever
-         or dampen slightly each bounce.
-       - bounce off the ceiling too if you want. */
+int ball_radius(int size) {
+    /* size 0 smallest, size BALL_SIZES-1 biggest. tweak the multiplier to taste. */
+    return 8 * (size + 1);
+}
 
-    /* later, replace screen-edge bounces with map collision: sample mapalpha
-       to see if the ball overlaps a wall pixel, and bounce off that. */
+/* compass sample of 8 points on the ball's perimeter against the map. */
+static bool ball_hits_map(GameAssets *a, int cx, int cy, int r) {
+    static const int dx[8] = { 0,  1, 1, 1, 0, -1, -1, -1 };
+    static const int dy[8] = {-1, -1, 0, 1, 1,  1,  0, -1 };
+    for (int i = 0; i < 8; i++) {
+        if (is_solid_pixel(a, cx + dx[i] * r, cy + dy[i] * r, false)) return true;
+    }
+    return false;
+}
+
+void update_balls(GameState *gs, GameAssets *a) {
+    const float gravity   = 0.15f;
+    const float floor_pop = -8.0f;   /* upward velocity given on floor bounce */
+
+    for (int i = 0; i < MAX_BALLS; i++) {
+        Ball *b = &gs->balls[i];
+        if (!b->active) continue;
+
+        b->vy += gravity;
+
+        /* horizontal axis: try to move; if blocked, flip vx instead. */
+        float new_x = b->x + b->vx;
+        if (ball_hits_map(a, (int)new_x, (int)b->y, ball_radius(b->size))) {
+            b->vx = -b->vx;
+        } else {
+            b->x = new_x;
+        }
+
+        /* vertical axis: floor pops back up, ceiling just inverts. */
+        float new_y = b->y + b->vy;
+        if (ball_hits_map(a, (int)b->x, (int)new_y, ball_radius(b->size))) {
+            if (b->vy > 0) b->vy = floor_pop;
+            else           b->vy = -b->vy;
+        } else {
+            b->y = new_y;
+        }
+    }
 }
 
 void update_boss(GameState *gs) {
@@ -317,7 +364,7 @@ void spawn_bullet(GameState *gs, float x, float y) {
         if (gs->bullets[i].active == false) {
             gs->bullets[i].x = x;
             gs->bullets[i].y = y;
-            gs->bullets[i].vy = -5.0f;  /* shoot upward */
+            gs->bullets[i].vy = -7.0f;  /* shoot upward */
             gs->bullets[i].active = true;
             break;
         }

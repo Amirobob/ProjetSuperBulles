@@ -22,6 +22,7 @@ void draw_game(BITMAP *buf, GameAssets *a, GameState *gs) {
     /* paint the map at the same position Startup uses */
     blit(a->map, buf, 0, 0, SCREEN_W/2 - a->map->w/2, 0, a->map->w, a->map->h);
     draw_player(buf, a, &gs->player);
+    draw_bullets(buf, a, gs);
 
     /* debug overlay — remove once movement works.
        y/vy: physics state. on_ground: has the player landed?
@@ -57,6 +58,13 @@ void draw_player(BITMAP *buf, GameAssets *a, Player *p) {
 
 
 void draw_bullets(BITMAP *buf, GameAssets *a, GameState *gs) {
+    for (int i = 0; i < MAX_BULLETS; i++) {
+        if (gs->bullets[i].active) {
+            int x = (int)gs->bullets[i].x - a->bullet->w / 2;
+            int y = (int)gs->bullets[i].y - a->bullet->h / 2;
+            draw_sprite(buf, a->bullet, x, y);
+        }
+    }
     /* TODO: for each active bullet, draw_sprite(buf, a->bullet, ...).
              centre the sprite on the bullet's x,y. */
 }
