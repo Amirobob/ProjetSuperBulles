@@ -184,10 +184,25 @@ static void populate_level(GameState *gs, int level_num) {
         case 4:
             /* boss level — needs update_boss() implemented for the boss to actually move/attack. */
             gs->boss.active = true;
-            gs->boss.hp     = 10;
+            gs->boss.hp     = 19;
             gs->boss.x      = SCREEN_W / 2.0f;
             gs->boss.y      = 150.0f;
             gs->boss.vx     = 1.5f;
+            gs->boss.phase  = 0;
+            gs->boss.violent = false;
+            gs->boss.spawn_timer = 2 * GAME_FPS;
+            break;
+        
+        case 5:
+            /* boss level — needs update_boss() implemented for the boss to actually move/attack. */
+            gs->boss.active = true;
+            gs->boss.hp     = 19;
+            gs->boss.x      = SCREEN_W / 2.0f;
+            gs->boss.y      = 150.0f;
+            gs->boss.vx     = 1.5f;
+            gs->boss.phase  = 0;
+            gs->boss.violent = true;
+            gs->boss.spawn_timer = 2 * GAME_FPS;
             break;
 
         default:
@@ -209,6 +224,7 @@ void init_level(GameState *gs, GameAssets *a, int level_num) {
     memset(gs->bullets,  0, sizeof(gs->bullets));
     memset(gs->balls,    0, sizeof(gs->balls));
     memset(gs->upgrades, 0, sizeof(gs->upgrades));
+    memset(&gs->boss,    0, sizeof(gs->boss)); 
     gs->boss.active = false;
     gs->active_balls = 0;
     gs->paused = false;
@@ -401,12 +417,88 @@ void update_balls(GameState *gs, GameAssets *a) {
 }
 
 void update_boss(GameState *gs) {
-    if (!gs->boss.active) return;
-    /* TODO:
-       - move the boss left/right; flip vx at the screen edges.
-       - advance the animation frame every N ticks (use bossframes).
-       - increment attack_timer; when it crosses a threshold, do something
-         (drop a ball, shoot, change phase) and reset the timer. */
+    Boss *b = &gs->boss;
+    if (!b->active) return;
+
+    if(b->phase == 0) {
+        /* changement de direction aléatoire */
+        b->attack_timer--;
+        if (b->attack_timer <= 0) {
+            b->attack_timer = GAME_FPS + rand() % (2 * GAME_FPS);
+            float speed = 1.5f + (rand() % 30) / 10.0f;
+            b->vx = (rand() % 2 == 0) ? speed : -speed;
+        }
+
+        b->x += b->vx;
+
+        /* rebond sur les bords de l'écran */
+        if (b->x < 0)        { b->x = 0;        b->vx =  fabsf(b->vx); }
+        if (b->x > SCREEN_W) { b->x = SCREEN_W; b->vx = -fabsf(b->vx); }
+
+    } else if(b->phase == 1) {
+        b->attack_timer--;
+        if (b->attack_timer <= 0) {
+            /* change de direction plus souvent, vitesse plus élevée */
+            b->attack_timer = GAME_FPS / 2 + rand() % GAME_FPS;
+            float speed = 3.0f + (rand() % 30) / 10.0f;
+            b->vx = (rand() % 2 == 0) ?  speed : -speed;
+            b->vy = (rand() % 2 == 0) ?  speed : -speed;
+        }
+
+        b->x += b->vx;
+        b->y += b->vy;
+
+        /* rebond sur les 4 bords */
+        if (b->x < 0)        { b->x = 0;        b->vx =  fabsf(b->vx); }
+        if (b->x > SCREEN_W) { b->x = SCREEN_W; b->vx = -fabsf(b->vx); }
+        if (b->y < 0)        { b->y = 0;        b->vy =  fabsf(b->vy); }
+        if (b->y > SCREEN_H) { b->y = SCREEN_H; b->vy = -fabsf(b->vy); }
+
+    } else if (b->phase == 2) {
+        b->attack_timer--;
+        if (b->attack_timer <= 0) {
+            b->attack_timer = (int)(7.5f * GAME_FPS);
+
+            float spd = 18.0f;
+            if (rand() % 2 == 0) {
+                b->vx =  spd; b->vy =  spd;
+            } else {
+                b->vx = -spd; b->vy =  spd;
+            }
+        }
+
+        b->x += b->vx;
+        b->y += b->vy;
+
+        if (b->x < 0)        { b->x = 0;        b->vx =  fabsf(b->vx); }
+        if (b->x > SCREEN_W) { b->x = SCREEN_W; b->vx = -fabsf(b->vx); }
+        if (b->y < 0)        { b->y = 0;        b->vy =  fabsf(b->vy); }
+        if (b->y > SCREEN_H) { b->y = SCREEN_H; b->vy = -fabsf(b->vy); }
+    }
+
+    b->spawn_timer--;
+    if (b->spawn_timer <= 0) {
+        if (b->phase == 0) {
+            /* 1 ball toutes les 2s, direction aléatoire horizontale */
+            b->spawn_timer = 4 * GAME_FPS;
+            float vx = (rand() % 2 == 0) ? 2.0f : -2.0f;
+            spawn_ball(gs, b->x, b->y, vx, 0.0f, 2);
+
+        } else if (b->phase == 1) {
+            /* 2 balls toutes les 0.75s, directions diagonales opposées */
+            b->spawn_timer = 3 * GAME_FPS;
+            spawn_ball(gs, b->x, b->y,  2.5f, -1.0f, 2);
+            spawn_ball(gs, b->x, b->y, -2.5f, -1.0f, 2);
+
+        } else if (b->phase == 2) {
+            /* 4 balls toutes les 2s, directions cardinales, plus rapides que les précédentes. */
+            b->spawn_timer = 2* GAME_FPS;
+            spawn_ball(gs, b->x, b->y,  3.0f,  0.0f, 3);
+            spawn_ball(gs, b->x, b->y, -3.0f,  0.0f, 3);
+            spawn_ball(gs, b->x, b->y,  0.0f,  3.0f, 3);
+            spawn_ball(gs, b->x, b->y,  0.0f, -3.0f, 3);
+        }
+    }
 }
 
 void update_upgrades(GameState *gs) {
@@ -517,6 +609,12 @@ void check_collisions(GameState *gs, GameAssets *a) {
             if (dx*dx + dy*dy < (float)(boss_r * boss_r)) {
                 gs->bullets[i].active = false;
                 gs->boss.hp--;
+                if(gs->boss.hp <= 35 && gs->boss.phase == 0) {
+                    gs->boss.phase = 1;
+                }
+                if(gs->boss.hp <= 20 && gs->boss.phase == 1 && gs->boss.violent) {
+                    gs->boss.phase = 2;
+                }
                 if (gs->boss.hp <= 0) {
                     gs->boss.active = false;
                     score += 500;

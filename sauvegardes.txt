@@ -2,4 +2,4 @@
 Amirobob 1 0
 Amirobob 1 0
 Amirobob 1 0
-max 3 25
+max 4 25

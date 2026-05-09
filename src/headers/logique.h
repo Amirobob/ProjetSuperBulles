@@ -43,11 +43,14 @@ typedef struct {
 typedef struct {
     float x, y;
     float vx;
+    float vy;
     int   hp;
     int   frame;
     int   frame_timer;
     int   phase;
     int   attack_timer;
+    int   spawn_timer;
+    bool  violent;
     bool  active;
 } Boss;
 

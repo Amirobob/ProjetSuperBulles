@@ -20,6 +20,10 @@ void draw_game(BITMAP *buf, GameAssets *a, GameState *gs) {
     draw_player(buf, a, &gs->player);
     draw_bullets(buf, a, gs);
     draw_balls(buf, a, gs);
+    if (gs->boss.active){
+        draw_boss(buf, a, &gs->boss);
+        draw_boss_hud(buf, &gs->boss, 45);
+    }
     draw_hud(buf, gs);
 }
 
@@ -57,10 +61,49 @@ void draw_balls(BITMAP *buf, GameAssets *a, GameState *gs) {
 
 
 void draw_boss(BITMAP *buf, GameAssets *a, Boss *b) {
-    /* TODO: if !b->active, return.
-             pick a->boss[b->frame] and draw it centred on b->x,b->y. */
+    if (!b->active) return;
+    BITMAP *spr = a->boss[b->frame];
+    int x = (int)b->x - spr->w / 2;
+    int y = (int)b->y - spr->h / 2;
+    draw_sprite(buf, spr, x, y);
 }
 
+void draw_boss_hud(BITMAP *buf, Boss *b, int max_hp) {
+    if (!b->active) return;
+
+    const int bar_w = 400;
+    const int bar_h = 18;
+    const int bar_x = SCREEN_W / 2 - bar_w / 2;
+    const int bar_y = 12;
+
+    /* fond de la barre */
+    rectfill(buf, bar_x, bar_y, bar_x + bar_w, bar_y + bar_h, makecol(40, 40, 40));
+
+    /* remplissage proportionnel aux hp */
+    int fill = (b->hp * bar_w) / max_hp;
+    if (fill < 0) fill = 0;
+
+    /* couleur selon la phase */
+    int col;
+    if      (b->phase == 0) col = makecol(80, 200, 80);    /* vert   */
+    else if (b->phase == 1) col = makecol(220, 140, 0);    /* orange */
+    else                    col = makecol(200, 40, 40);     /* rouge  */
+
+    rectfill(buf, bar_x, bar_y, bar_x + fill, bar_y + bar_h, col);
+
+    /* marqueurs de seuil de phase (à hp=7 et hp=3 par exemple) */
+    int mark1 = bar_x + (7 * bar_w) / max_hp;
+    int mark2 = bar_x + (3 * bar_w) / max_hp;
+    vline(buf, mark1, bar_y, bar_y + bar_h, makecol(255, 255, 255));
+    vline(buf, mark2, bar_y, bar_y + bar_h, makecol(255, 255, 255));
+
+    /* contour */
+    rect(buf, bar_x, bar_y, bar_x + bar_w, bar_y + bar_h, makecol(200, 200, 200));
+
+    /* label */
+    textout_centre_ex(buf, font, "BOSS", SCREEN_W / 2, bar_y + bar_h + 4,
+                      makecol(255, 255, 255), -1);
+}
 
 void draw_upgrades(BITMAP *buf, GameAssets *a, GameState *gs) {
     /* TODO: for each active upgrade, pick the right bitmap based on type:
