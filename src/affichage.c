@@ -13,10 +13,6 @@ void Startup(BITMAP *buf, BITMAP *map) {
 /* the master draw call: clears the buffer, paints the background, then
    layers each kind of entity on top, then the HUD. order matters — things
    drawn later sit on top. */
-/* counts one per render. paired with player y over time it tells you
-   whether the timer is ticking AND whether physics is actually advancing. */
-static int debug_render_count = 0;
-
 void draw_game(BITMAP *buf, GameAssets *a, GameState *gs) {
     clear_to_color(buf, makecol(0, 0, 0));
     /* paint the map at the same position Startup uses */
@@ -24,28 +20,7 @@ void draw_game(BITMAP *buf, GameAssets *a, GameState *gs) {
     draw_player(buf, a, &gs->player);
     draw_bullets(buf, a, gs);
     draw_balls(buf, a, gs);
-
-    /* debug overlay — remove once movement works.
-       y/vy: physics state. on_ground: has the player landed?
-       frames: counts up every redraw, so if it's frozen, the loop is stuck.
-       sample: what one pixel of mapalpha looks like at the player's centre —
-               tells you if your "empty" colour matches bitmap_mask_color. */
-    char line[128];
-    Player *p = &gs->player;
-    int ox = SCREEN_W/2 - a->map->w/2;
-    int sample_lx = (int)p->x - ox;
-    int sample_ly = (int)p->y;
-    int pix = (sample_lx >= 0 && sample_lx < a->mapalpha->w &&
-               sample_ly >= 0 && sample_ly < a->mapalpha->h)
-              ? getpixel(a->mapalpha, sample_lx, sample_ly) : -1;
-    int mask = bitmap_mask_color(a->mapalpha);
-
-    sprintf(line, "y=%.1f  vy=%.2f  ground=%d  frames=%d",
-            p->y, p->vy, p->on_ground, ++debug_render_count);
-    textout_ex(buf, font, line, 5, 5, makecol(255, 255, 0), -1);
-
-    sprintf(line, "pixel under player = %d   mask color = %d", pix, mask);
-    textout_ex(buf, font, line, 5, 20, makecol(255, 255, 0), -1);
+    draw_hud(buf, gs);
 }
 
 
@@ -74,9 +49,8 @@ void draw_balls(BITMAP *buf, GameAssets *a, GameState *gs) {
         if (gs->balls[i].active) {
             int x = (int)gs->balls[i].x;
             int y = (int)gs->balls[i].y;
-            int size = 40;  /* taille simple des balles */
-            
-            stretch_sprite(buf, a->boule, x - size/2, y - size/2, size, size);
+            int r = ball_radius(a, gs->balls[i].size);
+            stretch_sprite(buf, a->boule, x - r, y - r, 2 * r, 2 * r);
         }
     }
 }
@@ -98,7 +72,15 @@ void draw_upgrades(BITMAP *buf, GameAssets *a, GameState *gs) {
 
 
 void draw_hud(BITMAP *buf, GameState *gs) {
-    /* TODO: format a string like "HP:3  Score:120  Level:2" with sprintf
-             and textout_ex it in a corner. you can also show username
-             from the global on the other side. */
+    /* black bar across the bottom so the text reads cleanly over any background. */
+    rectfill(buf, 0, SCREEN_H - 30, SCREEN_W, SCREEN_H, makecol(0, 0, 0));
+
+    int time_left = gs->level_timer / GAME_FPS;
+    if (time_left < 0) time_left = 0;
+
+    char line[160];
+    sprintf(line, "Player: %s    Level: %d    Score: %d    Time: %d",
+            (const char *)username, level, score, time_left);
+    textout_centre_ex(buf, font, line, SCREEN_W / 2, SCREEN_H - 20,
+                      makecol(255, 255, 255), -1);
 }

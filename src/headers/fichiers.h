@@ -20,4 +20,11 @@ bool supprimer_sauvegarde(const char *pseudo);
 // Affiche un message d'erreur a l'ecran quand aucune sauvegarde n'est trouvee.
 // A appeler depuis interface.c apres un LOAD_NOT_FOUND.
 void afficher_erreur_chargement(BITMAP *buf, const char *pseudo);
+
+// Affiche un ecran de confirmation apres un chargement reussi, avant de lancer la partie.
+// Attend une touche / un clic.
+void afficher_chargement_succes(BITMAP *buf, const char *pseudo, int niveau, int score);
+
+// Affiche un ecran de confirmation apres une sauvegarde reussie. Attend une touche / un clic.
+void afficher_save_succes(BITMAP *buf, const char *pseudo, int niveau, int score);
 #endif // FICHIERS_H

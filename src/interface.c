@@ -1,6 +1,7 @@
 //ici on gére les menus du jeu, on communiquera ici principalement avec fichiers.c, et peut être avec affichage.c pour le déclenchement du jeu.
 #include <inclusive.h>
 #include "logique.h"
+#include "fichiers.h"
 
 typedef struct {
     int x1, y1, x2, y2;
@@ -50,7 +51,10 @@ void main_menu(BITMAP *buf){
         show_mouse(buf);
 
         //exit button
-        if (mouse_b & 1 && mouse_over(exit_b.x1, exit_b.y1, exit_b.x2, exit_b.y2)) return;
+        if (mouse_b & 1 && mouse_over(exit_b.x1, exit_b.y1, exit_b.x2, exit_b.y2)) {
+            exit_flag = true;   /* propagates through end_menu/startgame/enter_name back to main() */
+            return;
+        }
 
         //play button
         if (mouse_b & 1 && mouse_over(play_b.x1, play_b.y1, play_b.x2, play_b.y2)) {
@@ -86,7 +90,7 @@ void enter_name(BITMAP *buf) {
                 strcpy(username, name);
                 level = 1;
                 score = 0;
-                startgame(buf);
+                startgame(buf, username, level, score);
                 return;
             }
             if (c == '\b' && pos > 0) { 
@@ -115,7 +119,17 @@ void find_save_file(BITMAP *buf) {
 
         if (keypressed()) {
             c = readkey();
-            if (c == '\n') break; // Enter key, celui doit appeler le gestion des fichiers, pour trouver le fichier de sauvegarde du joueur et charger la partie, ou afficher un message d'erreur si le fichier n'existe pas.
+            if (key[KEY_ENTER]) {
+                int loaded_level = 1, loaded_score = 0;
+                LoadResult r = charger_partie(name, &loaded_level, &loaded_score);
+                if (r == LOAD_OK) {
+                    afficher_chargement_succes(buf, name, loaded_level, loaded_score);
+                    startgame(buf, name, loaded_level, loaded_score);
+                } else {
+                    afficher_erreur_chargement(buf, name);
+                }
+                return;
+            }
             if (c == '\b' && pos > 0) {
                 name[--pos] = '\0';
             } else if (pos < sizeof(name) - 1 && c >= ' ' && c <= '~') {
@@ -137,7 +151,9 @@ void end_menu(BITMAP *buf, bool won) {
     rectangle quit_b = {SCREEN_W / 2 - SCREEN_W / 3, SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 2 * SCREEN_H / 8};
     rectangle save_game_b = {SCREEN_W / 2 - SCREEN_W / 3, 3 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 4 * SCREEN_H / 8};
     rectangle retry_b = {SCREEN_W / 2 - SCREEN_W / 3, 5 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 6 * SCREEN_H / 8};
-    rectangle main_menu_b = {SCREEN_W / 2 - SCREEN_W / 3, 7 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 8 * SCREEN_H / 8};
+    rectangle main_menu_b = {SCREEN_W / 2 - SCREEN_W / 3, 7 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 8 * SCREEN_H / 8  - 20};
+
+    bool saved = false;   /* edge-detect: prevents holding the mouse from spamming saves */
 
     while(1){
         won?clear_to_color(buf, makecol(0, 20, 20)):clear_to_color(buf, makecol(20, 0, 0));
@@ -161,12 +177,24 @@ void end_menu(BITMAP *buf, bool won) {
 
         //save game button
         if (mouse_b & 1 && mouse_over(save_game_b.x1, save_game_b.y1, save_game_b.x2, save_game_b.y2)) {
-            // fonction pour sauvegarder, ici!
+            if (!saved) {
+                sauvegarder_partie((const char *)username, level, score);
+                afficher_save_succes(buf, (const char *)username, level, score);
+                saved = true;
+            }
         }
+        if (!(mouse_b & 1)) saved = false;   /* re-arm once mouse is released */
 
         //retry game button
         if (mouse_b & 1 && mouse_over(retry_b.x1, retry_b.y1, retry_b.x2, retry_b.y2)) {
-            //retry game if failed, start next level if won
+            if (won) {
+                level++;
+                score += 1000; // exemple de score pour le niveau gagné
+            }
+            else {
+                score = 0; // reset du score en cas de défaite
+            }
+            break;  /* retour a startgame, la boucle relance init_level avec le nouveau level. */
         }
 
         vsync();

@@ -3,11 +3,12 @@
 
 #include <inclusive.h>
 
-#define MAX_BULLETS   8
-#define MAX_BALLS     15
-#define MAX_UPGRADES  4
-#define BALL_SIZES    3
-#define GAME_FPS      60
+#define MAX_BULLETS    8
+#define MAX_BALLS      15
+#define MAX_UPGRADES   4
+#define BALL_SIZES     3
+#define GAME_FPS       60
+#define LEVEL_TIME_SEC 100   /* per-level countdown; out of time = level lost */
 
 typedef enum { UPG_SPEED, UPG_HEALTH, UPG_BULLET, UPG_COUNT } UpgradeType;
 
@@ -23,9 +24,7 @@ typedef struct {
     int   frame_timer;
     bool  facing_right;
     int   shoot_cooldown;
-    int   iframes;
     int   drop_timer;   /* >0: falling through red platforms */
-    int   shoot_cooldown;
 } Player;
 
 typedef struct {
@@ -79,10 +78,12 @@ typedef struct {
     int      active_balls;
     bool     paused;
     int      pipe_spawn_timer[3];
+    int      level_timer;   /* ticks remaining; / GAME_FPS = seconds left. */
 } GameState;
 
-/* entry point called by the menu */
-void startgame(BITMAP *buf);
+/* entry point called by the menu. seeds the run state from params,
+   then loops levels until the player quits or hits the close button. */
+void startgame(BITMAP *buf, const char *initial_username, int initial_level, int initial_score);
 
 /* assets */
 bool load_assets(GameAssets *a);
@@ -103,8 +104,9 @@ void update_player(Player *p, GameAssets *a);
 void update_bullets(GameState *gs, GameAssets *a);
 void update_balls(GameState *gs, GameAssets *a);
 
-/* visual + collision radius of a ball, derived from its size tier. */
-int ball_radius(int size);
+/* visual + collision radius of a ball, derived from its size tier.
+   size acts as a denominator: 1 = native boule sprite, 2 = half, 3 = third. */
+int ball_radius(GameAssets *a, int size);
 void update_boss(GameState *gs);
 void update_upgrades(GameState *gs);
 
@@ -117,7 +119,7 @@ void spawn_upgrade(GameState *gs, float x, float y);
 void apply_upgrade(Player *p, UpgradeType t);
 
 /* collisions + pause */
-void check_collisions(GameState *gs);
+void check_collisions(GameState *gs, GameAssets *a);
 void pause_menu(BITMAP *buf, GameState *gs);
 
 

@@ -111,27 +111,51 @@ bool supprimer_sauvegarde(const char *pseudo) {
     count--;
     return ecrire_toutes_sauvegardes(entries, count);
 }
-// Affiche un message d'erreur 
+// Attend qu'une touche soit pressee ou qu'on relache puis cliqe la souris.
+// Indispensable apres un changement d'ecran : on draine le clic qui a ouvert
+// l'ecran avant ET apres, sinon le clic est repris par le menu suivant.
+static void wait_for_dismiss(void) {
+    while ((mouse_b & 1) && !exit_flag) vsync();   // attend que le clic d'avant soit relache
+    clear_keybuf();
+    while (!exit_flag) {
+        vsync();
+        if (keypressed())  { readkey(); break; }
+        if (mouse_b & 1)   { break; }
+    }
+    while ((mouse_b & 1) && !exit_flag) vsync();   // ne pas refiler le clic au menu suivant
+}
+
+// Affiche un ecran centre avec un titre, un detail optionnel, et attend l'input.
+static void afficher_message(BITMAP *buf, const char *titre, const char *detail, int couleur_titre) {
+    clear_to_color(buf, makecol(0, 20, 20));
+    textout_centre_ex(buf, font, titre,
+                      SCREEN_W / 2, SCREEN_H / 2 - 20, couleur_titre, -1);
+    if (detail) {
+        textout_centre_ex(buf, font, detail,
+                          SCREEN_W / 2, SCREEN_H / 2, makecol(220, 220, 220), -1);
+    }
+    textout_centre_ex(buf, font, "Appuyez sur une touche pour continuer.",
+                      SCREEN_W / 2, SCREEN_H / 2 + 30, makecol(180, 180, 180), -1);
+    blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
+    wait_for_dismiss();
+}
+
 void afficher_erreur_chargement(BITMAP *buf, const char *pseudo) {
     char msg[64];
     snprintf(msg, sizeof(msg), "Aucune sauvegarde trouvee pour : %s", pseudo);
+    afficher_message(buf, msg, NULL, makecol(255, 80, 80));
+}
 
-    clear_to_color(buf, makecol(0, 20, 20));
-    textout_centre_ex(buf, font, msg,
-                      SCREEN_W / 2, SCREEN_H / 2,
-                      makecol(255, 80, 80), -1);
-    textout_centre_ex(buf, font, "Appuyez sur une touche pour continuer.",
-                      SCREEN_W / 2, SCREEN_H / 2 + 20,
-                      makecol(200, 200, 200), -1);
+void afficher_chargement_succes(BITMAP *buf, const char *pseudo, int niveau, int score) {
+    char titre[64], details[64];
+    snprintf(titre,   sizeof(titre),   "Sauvegarde chargee : %s", pseudo);
+    snprintf(details, sizeof(details), "Niveau %d   Score %d", niveau, score);
+    afficher_message(buf, titre, details, makecol(120, 220, 120));
+}
 
-    blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
-    int timer = 0;
-    while (timer < 120) {   
-        vsync();
-        timer++;
-        if (keypressed() || (mouse_b & 1)) {
-            readkey();      
-            break;
-        }
-    }
+void afficher_save_succes(BITMAP *buf, const char *pseudo, int niveau, int score) {
+    char titre[64], details[64];
+    snprintf(titre,   sizeof(titre),   "Partie sauvegardee : %s", pseudo);
+    snprintf(details, sizeof(details), "Niveau %d   Score %d", niveau, score);
+    afficher_message(buf, titre, details, makecol(120, 220, 120));
 }
