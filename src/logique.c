@@ -184,7 +184,7 @@ static void populate_level(GameState *gs, int level_num) {
         case 4:
             /* boss level — needs update_boss() implemented for the boss to actually move/attack. */
             gs->boss.active = true;
-            gs->boss.hp     = 19;
+            gs->boss.hp     = 45;
             gs->boss.x      = SCREEN_W / 2.0f;
             gs->boss.y      = 150.0f;
             gs->boss.vx     = 1.5f;
@@ -193,10 +193,10 @@ static void populate_level(GameState *gs, int level_num) {
             gs->boss.spawn_timer = 2 * GAME_FPS;
             break;
         
-        case 5:
+        case 10:
             /* boss level — needs update_boss() implemented for the boss to actually move/attack. */
             gs->boss.active = true;
-            gs->boss.hp     = 19;
+            gs->boss.hp     = 45;
             gs->boss.x      = SCREEN_W / 2.0f;
             gs->boss.y      = 150.0f;
             gs->boss.vx     = 1.5f;
