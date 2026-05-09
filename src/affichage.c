@@ -22,7 +22,7 @@ void draw_game(BITMAP *buf, GameAssets *a, GameState *gs) {
     draw_balls(buf, a, gs);
     if (gs->boss.active){
         draw_boss(buf, a, &gs->boss);
-        draw_boss_hud(buf, &gs->boss, 45);
+        draw_boss_hud(buf, &gs->boss, gs->boss.hp_max);
     }
     draw_hud(buf, gs);
 }
@@ -90,12 +90,6 @@ void draw_boss_hud(BITMAP *buf, Boss *b, int max_hp) {
     else                    col = makecol(200, 40, 40);     /* rouge  */
 
     rectfill(buf, bar_x, bar_y, bar_x + fill, bar_y + bar_h, col);
-
-    /* marqueurs de seuil de phase (à hp=7 et hp=3 par exemple) */
-    int mark1 = bar_x + (7 * bar_w) / max_hp;
-    int mark2 = bar_x + (3 * bar_w) / max_hp;
-    vline(buf, mark1, bar_y, bar_y + bar_h, makecol(255, 255, 255));
-    vline(buf, mark2, bar_y, bar_y + bar_h, makecol(255, 255, 255));
 
     /* contour */
     rect(buf, bar_x, bar_y, bar_x + bar_w, bar_y + bar_h, makecol(200, 200, 200));

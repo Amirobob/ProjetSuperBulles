@@ -45,6 +45,7 @@ typedef struct {
     float vx;
     float vy;
     int   hp;
+    int   hp_max;
     int   frame;
     int   frame_timer;
     int   phase;

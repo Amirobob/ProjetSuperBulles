@@ -184,7 +184,8 @@ static void populate_level(GameState *gs, int level_num) {
         case 4:
             /* boss level — needs update_boss() implemented for the boss to actually move/attack. */
             gs->boss.active = true;
-            gs->boss.hp     = 45;
+            gs->boss.hp     = 25;
+            gs->boss.hp_max = 25;
             gs->boss.x      = SCREEN_W / 2.0f;
             gs->boss.y      = 150.0f;
             gs->boss.vx     = 1.5f;
@@ -197,6 +198,7 @@ static void populate_level(GameState *gs, int level_num) {
             /* boss level — needs update_boss() implemented for the boss to actually move/attack. */
             gs->boss.active = true;
             gs->boss.hp     = 45;
+            gs->boss.hp_max = 45;
             gs->boss.x      = SCREEN_W / 2.0f;
             gs->boss.y      = 150.0f;
             gs->boss.vx     = 1.5f;
@@ -609,7 +611,7 @@ void check_collisions(GameState *gs, GameAssets *a) {
             if (dx*dx + dy*dy < (float)(boss_r * boss_r)) {
                 gs->bullets[i].active = false;
                 gs->boss.hp--;
-                if(gs->boss.hp <= 35 && gs->boss.phase == 0) {
+                if((gs->boss.hp <= 35 && gs->boss.phase == 0 && gs->boss.violent )|| (gs->boss.hp <= 15 && gs->boss.phase == 1 && !gs->boss.violent)) {
                     gs->boss.phase = 1;
                 }
                 if(gs->boss.hp <= 20 && gs->boss.phase == 1 && gs->boss.violent) {
