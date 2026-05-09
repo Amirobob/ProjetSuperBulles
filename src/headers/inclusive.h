@@ -7,6 +7,8 @@
 #include <stdbool.h>
 #include <time.h>
 #include <string.h>
+#include <math.h>
+#include <stdlib.h>
 extern volatile bool exit_flag;
 extern volatile int score;
 extern volatile char username[20];

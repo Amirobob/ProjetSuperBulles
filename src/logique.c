@@ -144,6 +144,7 @@ void init_player(Player *p, GameAssets *a) {
     p->shoot_cooldown = 0;
     p->iframes = 0;
     p->drop_timer = 0;
+    p->shoot_cooldown = 0;
 }
 
 
@@ -160,6 +161,11 @@ void init_level(GameState *gs, GameAssets *a, int level_num) {
     gs->paused = false;
 
     /* TODO later: spawn balls based on level_num, and a boss every Nth level. */
+
+    /* Initialize pipe spawn timers */
+    gs->pipe_spawn_timer[0] = 60;   /* tuyau gauche */
+    gs->pipe_spawn_timer[1] = 75;   /* tuyau centre */
+    gs->pipe_spawn_timer[2] = 90;   /* tuyau droite */
 
     (void)level_num;  /* unused for now */
 }
@@ -385,6 +391,14 @@ void spawn_ball(GameState *gs, float x, float y, float vx, float vy, int size) {
     }
 }
 
+void spawn_from_pipe(GameState *gs, float pipe_x, float pipe_y) {
+    float angle = (rand() % 360) * 3.14159f / 180.0f;
+    float speed = 2.0f + (rand() % 3);
+    float vx = cosf(angle) * speed;
+    float vy = sinf(angle) * speed;
+    spawn_ball(gs, pipe_x, pipe_y, vx, vy, 1);
+}
+
 /* called when a bullet hits a ball. if the ball wasn't the smallest size,
    replace it with two smaller ones moving in opposite directions. */
 void split_ball(GameState *gs, int idx) {
@@ -411,16 +425,22 @@ void apply_upgrade(Player *p, UpgradeType t) {
 /* checks every pair that can collide. happens once per tick. */
 void check_collisions(GameState *gs) {
 
-    /* bullet vs ball:
-       TODO: for each active bullet, check against every active ball.
-             a simple test is "distance from bullet to ball centre < ball radius".
-             on hit:
-               - mark the bullet inactive.
-               - small chance to spawn an upgrade where the ball was.
-               - add to score (bigger balls = more points).
-               - split_ball(gs, j).
-               - break out of the inner loop so the bullet doesn't hit twice. */
-
+    /* bullet vs ball:*/
+    for (int i = 0; i < MAX_BULLETS; i++) {
+        if (!gs->bullets[i].active) continue;
+        for (int j = 0; j < MAX_BALLS; j++) {
+            if (!gs->balls[j].active) continue;
+            float dx = gs->bullets[i].x - gs->balls[j].x;
+            float dy = gs->bullets[i].y - gs->balls[j].y;
+            float dist = sqrtf(dx*dx + dy*dy);
+            if (dist < 20.0f) {
+                gs->bullets[i].active = false;
+                gs->balls[j].active = false;
+                gs->active_balls--;
+                break;
+            }
+        }
+    }
     /* bullet vs boss:
        TODO: same idea. on hit, deactivate the bullet and decrement boss hp.
              once boss hp <= 0, set boss.active = false. */
