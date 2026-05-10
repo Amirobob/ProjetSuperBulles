@@ -1,4 +1,3 @@
-// la logique du jeu : boucle principale, entités, collisions.
 #include <inclusive.h>
 #include "logique.h"
 #include "affichage.h"
@@ -10,8 +9,7 @@ static void tick_increment(void) { tick_counter++; }
 END_OF_FUNCTION(tick_increment);
 
 
-/* Ce fonction démarre le jeu et gère la boucle principale.
-   les params seedent les globals (username/level/score) que end_menu et le HUD lisent. */
+/* Seeds global state (username/level/score) that end_menu and HUD read from. */
 void startgame(BITMAP *buf, const char *initial_username, int initial_level, int initial_score) {
     strcpy((char *)username, initial_username);
     level = initial_level;
@@ -29,9 +27,8 @@ void startgame(BITMAP *buf, const char *initial_username, int initial_level, int
         init_level(&gs, &assets, level);
 
         int outcome = game_loop(buf, &assets, &gs);
-        if (outcome < 0) break;            /* user quit */
+        if (outcome < 0) break;
 
-        /* end_menu mute level/score selon le bouton clique (retry/next/save). */
         end_menu(buf, outcome == 1);
         if (exit_flag) break;
     }
@@ -40,8 +37,7 @@ void startgame(BITMAP *buf, const char *initial_username, int initial_level, int
 }
 
 
-/* freezes the world and overlays "3 / 2 / 1 / Go!" so the player can scout the level
-   before physics starts. called from game_loop before install_int_ex. */
+/* Freezes world to let player scout spawns. */
 static void countdown_intro(BITMAP *buf, GameAssets *a, GameState *gs) {
     static const char * const steps[] = {"3", "2", "1", "Go!"};
 
@@ -52,14 +48,14 @@ static void countdown_intro(BITMAP *buf, GameAssets *a, GameState *gs) {
                           makecol(255, 255, 80), -1);
         blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
 
-        /* hand-roll the wait so we can bail out instantly on close-button. */
-        for (int frames = 0; frames < 50 && !exit_flag; frames++) vsync();
+        /* split into 100ms slices so close-button stays responsive. */
+        int slices = COUNTDOWN_STEP_MS / 100;
+        for (int slice = 0; slice < slices && !exit_flag; slice++) rest(100);
     }
 }
 
 
-/* Le loop principal du jeu.
-   retourne 1 = won, 0 = lost, -1 = quit. */
+/* Returns: 1=won, 0=lost, -1=quit. */
 int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
     countdown_intro(buf, a, gs);
 
@@ -79,7 +75,7 @@ int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
                 update_bullets(gs, a);
                 update_balls(gs, a);
                 update_boss(gs);
-                update_upgrades(gs);
+                update_upgrades(gs, a);
                 check_collisions(gs, a);
                 if (gs->level_timer > 0) gs->level_timer--;
             }
@@ -95,12 +91,12 @@ int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
             if (pause_menu(buf, gs)) { outcome = -1; break; }
         }
         if (is_player_dead(gs))    { outcome = 0; break; }
-        if (gs->level_timer <= 0)  { outcome = 0; break; }   /* timeout = loss */
+        if (gs->level_timer <= 0)  { outcome = 0; break; }
         if (is_level_complete(gs)) {
             /* per-level time bonus: faster wins get less, per the spec formula. */
             int seconds_left = gs->level_timer / GAME_FPS;
             if (seconds_left < 0) seconds_left = 0;
-            score += 100 - seconds_left;
+            score += SCORE_LEVEL_BASE - seconds_left;
             outcome = 1;
             break;
         }
@@ -111,7 +107,26 @@ int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
 }
 
 
-/* assets */
+/* Build a blue-tinted copy of a sprite for the second-life visual. */
+static BITMAP *make_blue_variant(BITMAP *src) {
+    BITMAP *dst = create_bitmap(src->w, src->h);
+    if (!dst) return NULL;
+    int mask = bitmap_mask_color(src);
+    for (int y = 0; y < src->h; y++) {
+        for (int x = 0; x < src->w; x++) {
+            int c = getpixel(src, x, y);
+            if (c == mask) { putpixel(dst, x, y, mask); continue; }
+            int r = getr(c), g = getg(c), b = getb(c);
+            int nr = r / 2;
+            int ng = (g * 7) / 10;
+            int nb = b + (255 - b) * 6 / 10;
+            if (nb > 255) nb = 255;
+            putpixel(dst, x, y, makecol(nr, ng, nb));
+        }
+    }
+    return dst;
+}
+
 bool load_assets(GameAssets *a) {
     char path[256];
     memset(a, 0, sizeof(*a));
@@ -130,6 +145,8 @@ bool load_assets(GameAssets *a) {
         sprintf(path, "src/character/character_%d.bmp", i);
         a->character[i] = load_bitmap(path, NULL);
         if (!a->character[i]) return false;
+        a->character_blue[i] = make_blue_variant(a->character[i]);
+        if (!a->character_blue[i]) return false;
     }
     for (int i = 0; i < bossframes; i++) {
         sprintf(path, "src/character/boss_%d.bmp", i);
@@ -140,8 +157,10 @@ bool load_assets(GameAssets *a) {
 }
 
 void free_assets(GameAssets *a) {
-    /* destroy_bitmap accepts NULL */
-    for (int i = 0; i < charframes; i++) destroy_bitmap(a->character[i]);
+    for (int i = 0; i < charframes; i++) {
+        destroy_bitmap(a->character[i]);
+        destroy_bitmap(a->character_blue[i]);
+    }
     for (int i = 0; i < bossframes; i++) destroy_bitmap(a->boss[i]);
     destroy_bitmap(a->map);
     destroy_bitmap(a->mapalpha);
@@ -153,15 +172,8 @@ void free_assets(GameAssets *a) {
 }
 
 
-/* ---------- setup ---------- */
-
-/* put the player at the starting position and reset their stats.
-   call this at the start of each level (or only on retry, if you want
-   speed/double-shot upgrades to carry over between levels). */
+/* Player initialization. */
 void init_player(Player *p, GameAssets *a) {
-    /* the map is drawn centred horizontally at the top of the screen.
-       compute its left/top edge, then place the player relative to that —
-       this way the spawn moves with the map if its size changes. */
     int map_left = SCREEN_W / 2 - a->map->w / 2;
     int map_top  = 0;
 
@@ -171,21 +183,20 @@ void init_player(Player *p, GameAssets *a) {
     p->vx = 0;
     p->vy = 0;
     p->on_ground = false;
-    p->hp = p->max_hp = 3;
-    p->speed = 3;
-    p->double_shot = false;
+    p->hp = p->max_hp = PLAYER_START_HP;
+    p->speed = PLAYER_START_SPEED;
+    p->shots_per_fire = 1;
     p->frame = 0;
     p->frame_timer = 0;
     p->facing_right = true;
     p->shoot_cooldown = 0;
     p->drop_timer = 0;
+    p->has_second_life = false;
+    p->invuln_timer = 0;
 }
 
 
-/* ---------- level framework ----------
-   Edit each case to design what level N contains: ball spawns, boss config,
-   upgrade placements, etc. Common reset (player position, timers, clearing
-   arrays) lives in init_level — only put level-specific stuff here. */
+/* Level configuration. Edit each case to set spawns, boss, upgrades. */
 static void populate_level(GameState *gs, int level_num) {
     switch (level_num) {
         case 1:
@@ -204,7 +215,7 @@ static void populate_level(GameState *gs, int level_num) {
             break;
 
         case 4:
-            /* boss level — needs update_boss() implemented for the boss to actually move/attack. */
+            /* TODO: update_boss() moves and attacks. */
             gs->boss.active = true;
             gs->boss.hp     = 25;
             gs->boss.hp_max = 25;
@@ -217,7 +228,7 @@ static void populate_level(GameState *gs, int level_num) {
             break;
         
         case 10:
-            /* boss level — needs update_boss() implemented for the boss to actually move/attack. */
+            /* TODO: update_boss() moves and attacks. */
             gs->boss.active = true;
             gs->boss.hp     = 45;
             gs->boss.hp_max = 45;
@@ -230,7 +241,6 @@ static void populate_level(GameState *gs, int level_num) {
             break;
 
         default:
-            /* fallback for levels beyond what's designed: scale ball count by level. */
             for (int i = 0; i < (level_num < 8 ? level_num : 8); i++) {
                 float dir = (i % 2 == 0) ? 2.0f : -2.0f;
                 spawn_ball(gs, SCREEN_W / 2.0f + (i - 2) * 100.0f, 150.0f, dir, 0.0f, 1);
@@ -240,8 +250,7 @@ static void populate_level(GameState *gs, int level_num) {
 }
 
 
-/* set up everything for a level: player, bullets all inactive, balls all inactive,
-   then delegate to populate_level for the level-specific spawns. */
+/* Initialize level state and run level-specific spawn logic. */
 void init_level(GameState *gs, GameAssets *a, int level_num) {
     init_player(&gs->player, a);
 
@@ -254,19 +263,14 @@ void init_level(GameState *gs, GameAssets *a, int level_num) {
     gs->paused = false;
 
     gs->level_timer = LEVEL_TIME_SEC * GAME_FPS;
-
-    /* Initialize pipe spawn timers */
-    gs->pipe_spawn_timer[0] = 60;   /* tuyau gauche */
-    gs->pipe_spawn_timer[1] = 75;   /* tuyau centre */
-    gs->pipe_spawn_timer[2] = 90;   /* tuyau droite */
-
+    gs->pipe_spawn_timer[0] = 60;
+    gs->pipe_spawn_timer[1] = 75;
+    gs->pipe_spawn_timer[2] = 90;
     populate_level(gs, level_num);
-
-    (void)level_num;  /* unused for now */
 }
 
 
-/* level is "done" when there are no balls left and the boss (if any) is dead. */
+/* Level complete when all balls killed and boss dead. */
 bool is_level_complete(const GameState *gs) {
     return gs->active_balls == 0 && !gs->boss.active;
 }
@@ -274,10 +278,7 @@ bool is_level_complete(const GameState *gs) {
 bool is_player_dead(const GameState *gs) { return gs->player.hp <= 0; }
 
 
-/* ---------- input ---------- */
-
-/* read the keyboard once per tick and act on it.
-   moves the player and fires bullets. */
+/* Read keyboard and update player movement/shooting. */
 void handle_input(GameState *gs) {
     Player *p = &gs->player;
 
@@ -286,25 +287,21 @@ void handle_input(GameState *gs) {
     if (key[KEY_RIGHT]) { p->vx =  (float)p->speed; p->facing_right = true;  }
 
     if (key[KEY_UP]) {
-        if (p->on_ground) { p->vy -= 11.5f; p->on_ground = false; }
-        else if (p->vy > 0) p->vy -= 0.5f;  /* held = glide-fall */
+        if (p->on_ground) { p->vy += PLAYER_JUMP_IMPULSE; p->on_ground = false; }
+        else if (p->vy > 0) p->vy += PLAYER_JUMP_HOLD;
     }
-
-    /* drop through red platforms */
     if (key[KEY_DOWN] && p->on_ground) {
-        p->drop_timer = 15;
+        p->drop_timer = PLAYER_DROP_TICKS;
         p->on_ground = false;
     }
 
     if (key[KEY_SPACE] && p->shoot_cooldown == 0) {
-        if (p->double_shot) {
-            spawn_bullet(gs, p->x + 5, p->y - 10);
-            spawn_bullet(gs, p->x - 5, p->y - 10);
+        int n = p->shots_per_fire;
+        for (int k = 0; k < n; k++) {
+            float dx = (k - (n - 1) / 2.0f) * PLAYER_SHOT_SPACING;
+            spawn_bullet(gs, p->x + dx, p->y - 10);
         }
-        else {
-            spawn_bullet(gs, p->x, p->y - 10);
-        }
-        p->shoot_cooldown = GAME_FPS / 2;
+        p->shoot_cooldown = PLAYER_SHOOT_COOLDOWN;
     }
 }
 
@@ -325,7 +322,7 @@ static bool is_solid_pixel(GameAssets *a, int sx, int sy, bool platforms_solid) 
     return false;
 }
 
-/* perimeter sample of a w×h box. step ≤ thinnest platform you expect. */
+/* Perimeter collision sampling. */
 static bool box_hits(GameAssets *a, int x, int y, int w, int h, bool platforms_solid) {
     const int step  = 4;
     const int x_end = x + w - 1;
@@ -351,7 +348,6 @@ void update_player(Player *p, GameAssets *a) {
     int hh = spr->h / 2;
     bool platforms_solid = (p->drop_timer == 0);
 
-    /* horizontal */
     {
         float new_x = p->x + p->vx;
         int   left  = (int)new_x - hw;
@@ -360,11 +356,9 @@ void update_player(Player *p, GameAssets *a) {
             p->x = new_x;
     }
 
-    /* gravity, capped to avoid tunneling through thin floors */
-    p->vy += 0.5f;
-    if (p->vy > 12.0f) p->vy = 12.0f;
+    p->vy += PLAYER_GRAVITY;
+    if (p->vy > PLAYER_MAX_FALL) p->vy = PLAYER_MAX_FALL;
 
-    /* vertical */
     {
         float new_y = p->y + p->vy;
         int   left  = (int)p->x  - hw;
@@ -378,12 +372,13 @@ void update_player(Player *p, GameAssets *a) {
         }
     }
 
-    if (p->vx != 0 && ++p->frame_timer >= 8) {
+    if (p->vx != 0 && ++p->frame_timer >= PLAYER_WALK_FRAME_TICKS) {
         p->frame = (p->frame + 1) % charframes;
         p->frame_timer = 0;
     }
     if (p->drop_timer     > 0) p->drop_timer--;
     if (p->shoot_cooldown > 0) p->shoot_cooldown--;
+    if (p->invuln_timer   > 0) p->invuln_timer--;
 }
 
 void update_bullets(GameState *gs, GameAssets *a) {
@@ -396,12 +391,12 @@ void update_bullets(GameState *gs, GameAssets *a) {
     }
 }
 
+/* Size is denominator: 1=full, 2=half, 3=third of sprite. */
 int ball_radius(GameAssets *a, int size) {
-    /* size = denominator: 1 = full boule sprite, 2 = half, 3 = third. */
     return (a->boule->w / 2) / size;
 }
 
-/* compass sample of 8 points on the ball's perimeter against the map. */
+/* 8-point compass sample of ball perimeter. */
 static bool ball_hits_map(GameAssets *a, int cx, int cy, int r) {
     static const int dx[8] = { 0,  1, 1, 1, 0, -1, -1, -1 };
     static const int dy[8] = {-1, -1, 0, 1, 1,  1,  0, -1 };
@@ -412,8 +407,8 @@ static bool ball_hits_map(GameAssets *a, int cx, int cy, int r) {
 }
 
 void update_balls(GameState *gs, GameAssets *a) {
-    const float gravity   = 0.15f;
-    const float floor_pop = -10.0f;   /* upward velocity given on floor bounce */
+    const float gravity   = BALL_GRAVITY;
+    const float floor_pop = BALL_FLOOR_POP;
 
     for (int i = 0; i < MAX_BALLS; i++) {
         Ball *b = &gs->balls[i];
@@ -421,7 +416,6 @@ void update_balls(GameState *gs, GameAssets *a) {
 
         b->vy += gravity;
 
-        /* horizontal axis: try to move; if blocked, flip vx instead. */
         float new_x = b->x + b->vx;
         if (ball_hits_map(a, (int)new_x, (int)b->y, ball_radius(a, b->size))) {
             b->vx = -b->vx;
@@ -429,7 +423,6 @@ void update_balls(GameState *gs, GameAssets *a) {
             b->x = new_x;
         }
 
-        /* vertical axis: floor pops back up, ceiling just inverts. */
         float new_y = b->y + b->vy;
         if (ball_hits_map(a, (int)b->x, (int)new_y, ball_radius(a, b->size))) {
             if (b->vy > 0) b->vy = floor_pop;
@@ -445,34 +438,28 @@ void update_boss(GameState *gs) {
     if (!b->active) return;
 
     if(b->phase == 0) {
-        /* changement de direction aléatoire */
         b->attack_timer--;
         if (b->attack_timer <= 0) {
             b->attack_timer = GAME_FPS + rand() % (2 * GAME_FPS);
-            float speed = 1.5f + (rand() % 30) / 10.0f;
+            float speed = BOSS_PHASE0_SPEED_BASE + (rand() % 30) / 10.0f;
             b->vx = (rand() % 2 == 0) ? speed : -speed;
         }
 
         b->x += b->vx;
-
-        /* rebond sur les bords de l'écran */
         if (b->x < 0)        { b->x = 0;        b->vx =  fabsf(b->vx); }
         if (b->x > SCREEN_W) { b->x = SCREEN_W; b->vx = -fabsf(b->vx); }
 
     } else if(b->phase == 1) {
         b->attack_timer--;
         if (b->attack_timer <= 0) {
-            /* change de direction plus souvent, vitesse plus élevée */
             b->attack_timer = GAME_FPS / 2 + rand() % GAME_FPS;
-            float speed = 3.0f + (rand() % 30) / 10.0f;
+            float speed = BOSS_PHASE1_SPEED_BASE + (rand() % 30) / 10.0f;
             b->vx = (rand() % 2 == 0) ?  speed : -speed;
             b->vy = (rand() % 2 == 0) ?  speed : -speed;
         }
 
         b->x += b->vx;
         b->y += b->vy;
-
-        /* rebond sur les 4 bords */
         if (b->x < 0)        { b->x = 0;        b->vx =  fabsf(b->vx); }
         if (b->x > SCREEN_W) { b->x = SCREEN_W; b->vx = -fabsf(b->vx); }
         if (b->y < 0)        { b->y = 0;        b->vy =  fabsf(b->vy); }
@@ -483,7 +470,7 @@ void update_boss(GameState *gs) {
         if (b->attack_timer <= 0) {
             b->attack_timer = (int)(7.5f * GAME_FPS);
 
-            float spd = 18.0f;
+            float spd = BOSS_PHASE2_SPEED;
             if (rand() % 2 == 0) {
                 b->vx =  spd; b->vy =  spd;
             } else {
@@ -493,7 +480,6 @@ void update_boss(GameState *gs) {
 
         b->x += b->vx;
         b->y += b->vy;
-
         if (b->x < 0)        { b->x = 0;        b->vx =  fabsf(b->vx); }
         if (b->x > SCREEN_W) { b->x = SCREEN_W; b->vx = -fabsf(b->vx); }
         if (b->y < 0)        { b->y = 0;        b->vy =  fabsf(b->vy); }
@@ -503,20 +489,17 @@ void update_boss(GameState *gs) {
     b->spawn_timer--;
     if (b->spawn_timer <= 0) {
         if (b->phase == 0) {
-            /* 1 ball toutes les 2s, direction aléatoire horizontale */
-            b->spawn_timer = 4 * GAME_FPS;
+            b->spawn_timer = BOSS_PHASE0_SPAWN_SEC * GAME_FPS;
             float vx = (rand() % 2 == 0) ? 2.0f : -2.0f;
             spawn_ball(gs, b->x, b->y, vx, 0.0f, 2);
 
         } else if (b->phase == 1) {
-            /* 2 balls toutes les 0.75s, directions diagonales opposées */
-            b->spawn_timer = 3 * GAME_FPS;
+            b->spawn_timer = BOSS_PHASE1_SPAWN_SEC * GAME_FPS;
             spawn_ball(gs, b->x, b->y,  2.5f, -1.0f, 2);
             spawn_ball(gs, b->x, b->y, -2.5f, -1.0f, 2);
 
         } else if (b->phase == 2) {
-            /* 4 balls toutes les 2s, directions cardinales, plus rapides que les précédentes. */
-            b->spawn_timer = 2* GAME_FPS;
+            b->spawn_timer = BOSS_PHASE2_SPAWN_SEC * GAME_FPS;
             spawn_ball(gs, b->x, b->y,  3.0f,  0.0f, 3);
             spawn_ball(gs, b->x, b->y, -3.0f,  0.0f, 3);
             spawn_ball(gs, b->x, b->y,  0.0f,  3.0f, 3);
@@ -525,20 +508,28 @@ void update_boss(GameState *gs) {
     }
 }
 
-void update_upgrades(GameState *gs) {
-    /* TODO: for each active upgrade, drift it downward (y += small amount).
-             if it goes off the bottom, mark it inactive (player missed it). */
+void update_upgrades(GameState *gs, GameAssets *a) {
+    for (int i = 0; i < MAX_UPGRADES; i++) {
+        Upgrade *u = &gs->upgrades[i];
+        if (!u->active) continue;
+
+        float new_y = u->y + UPGRADE_FALL_SPEED;
+        if (!box_hits(a, (int)u->x - UPGRADE_HALF_SIZE, (int)new_y - UPGRADE_HALF_SIZE,
+                      UPGRADE_HALF_SIZE * 2, UPGRADE_HALF_SIZE * 2, true)) {
+            u->y = new_y;
+        }
+        if (u->y > SCREEN_H) u->active = false;
+    }
 }
 
 
-/* ---------- spawning ---------- */
 
 void spawn_bullet(GameState *gs, float x, float y) {
     for (int i = 0; i < MAX_BULLETS; i++) {
         if (gs->bullets[i].active == false) {
             gs->bullets[i].x = x;
             gs->bullets[i].y = y;
-            gs->bullets[i].vy = -7.0f;  /* shoot upward */
+            gs->bullets[i].vy = BULLET_SPEED;  /* shoot upward */
             gs->bullets[i].active = true;
             break;
         }
@@ -568,8 +559,7 @@ void spawn_from_pipe(GameState *gs, float pipe_x, float pipe_y) {
     spawn_ball(gs, pipe_x, pipe_y, vx, vy, 1);
 }
 
-/* called when a bullet hits a ball. if the ball wasn't the smallest size,
-   replace it with two smaller ones moving in opposite directions. */
+/* Bullet hit ball: destroy if size==3, else spawn two smaller children. */
 void split_ball(GameState *gs, int idx) {
     Ball *b = &gs->balls[idx];
     int parent_size = b->size;
@@ -577,37 +567,46 @@ void split_ball(GameState *gs, int idx) {
     b->active = false;
     gs->active_balls--;
 
-    /* size 3 is smallest — no children, full kill bonus. otherwise spawn two
-       halved children moving outward and upward, partial split bonus. */
+    /* Size 3 is smallest. */
     if (parent_size < 3) {
-        spawn_ball(gs, b->x, b->y,  2.0f, -4.0f, parent_size + 1);
-        spawn_ball(gs, b->x, b->y, -2.0f, -4.0f, parent_size + 1);
-        score += 25;
+        spawn_ball(gs, b->x, b->y,  BALL_SPLIT_VX, BALL_SPLIT_VY, parent_size + 1);
+        spawn_ball(gs, b->x, b->y, -BALL_SPLIT_VX, BALL_SPLIT_VY, parent_size + 1);
+        score += SCORE_BALL_SPLIT;
     } else {
-        score += 100;
+        score += SCORE_BALL_DESTROY;
+        /* Smallest ball fully destroyed: chance to drop an upgrade from level 2 onward. */
+        if (level >= UPGRADE_DROP_MIN_LEVEL && rand() % 100 < UPGRADE_DROP_CHANCE_PCT) {
+            spawn_upgrade(gs, b->x, b->y);
+        }
     }
 }
 
 void spawn_upgrade(GameState *gs, float x, float y) {
-    /* TODO: find a free upgrade slot, set position, pick a random type
-             (rand() % UPG_COUNT), mark it active. */
+    for (int i = 0; i < MAX_UPGRADES; i++) {
+        if (!gs->upgrades[i].active) {
+            gs->upgrades[i].x = x;
+            gs->upgrades[i].y = y;
+            gs->upgrades[i].type = (UpgradeType)(rand() % UPG_COUNT);
+            gs->upgrades[i].active = true;
+            break;
+        }
+    }
 }
 
 void apply_upgrade(Player *p, UpgradeType t) {
-    /* TODO:
-       - UPG_SPEED  → bump p->speed.
-       - UPG_HEALTH → +1 hp, but don't go past max_hp.
-       - UPG_BULLET → set double_shot = true. */
+    switch (t) {
+        case UPG_SPEED:  p->speed += UPGRADE_SPEED_BONUS; break;
+        case UPG_HEALTH: p->has_second_life = true; break;
+        case UPG_BULLET:
+            if (p->shots_per_fire < PLAYER_MAX_SHOTS) p->shots_per_fire++;
+            break;
+        default: break;
+    }
 }
 
 
-/* ---------- collisions ---------- */
-
-/* checks every pair that can collide. happens once per tick. */
 void check_collisions(GameState *gs, GameAssets *a) {
     const int player_r = a->character[0]->w / 2;
-
-    /* bullet vs ball: split_ball decides whether to spawn children. */
     for (int i = 0; i < MAX_BULLETS; i++) {
         if (!gs->bullets[i].active) continue;
         for (int j = 0; j < MAX_BALLS; j++) {
@@ -623,7 +622,6 @@ void check_collisions(GameState *gs, GameAssets *a) {
         }
     }
 
-    /* bullet vs boss: drains hp, awards 500 on kill. */
     if (gs->boss.active) {
         int boss_r = a->boss[0]->w / 2;
         for (int i = 0; i < MAX_BULLETS; i++) {
@@ -641,35 +639,57 @@ void check_collisions(GameState *gs, GameAssets *a) {
                 }
                 if (gs->boss.hp <= 0) {
                     gs->boss.active = false;
-                    score += 500;
+                    score += SCORE_BOSS_KILL;
                 }
             }
         }
     }
 
-    /* player vs ball: any contact ends the game. */
     for (int j = 0; j < MAX_BALLS; j++) {
         if (!gs->balls[j].active) continue;
         float dx = gs->player.x - gs->balls[j].x;
         float dy = gs->player.y - gs->balls[j].y;
         int   r  = ball_radius(a, gs->balls[j].size) + player_r;
         if (dx*dx + dy*dy < (float)(r * r)) {
-            gs->player.hp = 0;
+            if (gs->player.invuln_timer > 0) break;
+            if (gs->player.has_second_life) {
+                gs->player.has_second_life = false;
+                gs->player.invuln_timer = PLAYER_INVULN_TICKS;
+                gs->balls[j].active = false;
+                gs->active_balls--;
+            } else {
+                gs->player.hp = 0;
+            }
             return;
         }
     }
 
-    /* player vs boss: any contact ends the game. */
     if (gs->boss.active) {
         int   boss_r = a->boss[0]->w / 2;
         float dx = gs->player.x - gs->boss.x;
         float dy = gs->player.y - gs->boss.y;
         int   r  = player_r + boss_r;
-        if (dx*dx + dy*dy < (float)(r * r)) {
-            gs->player.hp = 0;
+        if (dx*dx + dy*dy < (float)(r * r) && gs->player.invuln_timer == 0) {
+            if (gs->player.has_second_life) {
+                gs->player.has_second_life = false;
+                gs->player.invuln_timer = PLAYER_INVULN_TICKS;
+            } else {
+                gs->player.hp = 0;
+            }
         }
     }
+
+    for (int i = 0; i < MAX_UPGRADES; i++) {
+        Upgrade *u = &gs->upgrades[i];
+        if (!u->active) continue;
+        int   upg_r = a->upg_speed->w / 2;
+        float dx = gs->player.x - u->x;
+        float dy = gs->player.y - u->y;
+        int   r  = player_r + upg_r;
+        if (dx*dx + dy*dy < (float)(r * r)) {
+            apply_upgrade(&gs->player, u->type);
+            u->active = false;
+        }
+    }
+
 }
-
-
-/* pause_menu now lives in interface.c alongside the other menus. */

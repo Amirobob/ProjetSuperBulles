@@ -20,6 +20,7 @@ void draw_game(BITMAP *buf, GameAssets *a, GameState *gs) {
     draw_player(buf, a, &gs->player);
     draw_bullets(buf, a, gs);
     draw_balls(buf, a, gs);
+    draw_upgrades(buf, a, gs);
     if (gs->boss.active){
         draw_boss(buf, a, &gs->boss);
         draw_boss_hud(buf, &gs->boss, gs->boss.hp_max);
@@ -29,7 +30,8 @@ void draw_game(BITMAP *buf, GameAssets *a, GameState *gs) {
 
 
 void draw_player(BITMAP *buf, GameAssets *a, Player *p) {
-    BITMAP *spr = a->character[p->frame];
+    BITMAP *spr = p->has_second_life ? a->character_blue[p->frame]
+                                     : a->character[p->frame];
     int x = (int)p->x - spr->w / 2;   /* p->x/p->y is the centre, draw_sprite wants top-left */
     int y = (int)p->y - spr->h / 2;
     if (p->facing_right) draw_sprite(buf, spr, x, y);
@@ -100,11 +102,14 @@ void draw_boss_hud(BITMAP *buf, Boss *b, int max_hp) {
 }
 
 void draw_upgrades(BITMAP *buf, GameAssets *a, GameState *gs) {
-    /* TODO: for each active upgrade, pick the right bitmap based on type:
-               UPG_SPEED  → a->upg_speed
-               UPG_HEALTH → a->upg_health
-               UPG_BULLET → a->upg_bullet
-             then draw_sprite centred on the upgrade's position. */
+    for (int i = 0; i < MAX_UPGRADES; i++) {
+        Upgrade *u = &gs->upgrades[i];
+        if (!u->active) continue;
+        BITMAP *spr = a->upg_speed;
+        if      (u->type == UPG_HEALTH) spr = a->upg_health;
+        else if (u->type == UPG_BULLET) spr = a->upg_bullet;
+        draw_sprite(buf, spr, (int)u->x - spr->w / 2, (int)u->y - spr->h / 2);
+    }
 }
 
 

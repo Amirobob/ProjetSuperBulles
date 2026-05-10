@@ -250,10 +250,10 @@ bool pause_menu(BITMAP *buf, GameState *gs) {
 
 void end_menu(BITMAP *buf, bool won) {
 
-    rectangle quit_b = {SCREEN_W / 2 - SCREEN_W / 3, SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 2 * SCREEN_H / 8};
+    rectangle retry_b = {SCREEN_W / 2 - SCREEN_W / 3, SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 2 * SCREEN_H / 8};
     rectangle save_game_b = {SCREEN_W / 2 - SCREEN_W / 3, 3 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 4 * SCREEN_H / 8};
-    rectangle retry_b = {SCREEN_W / 2 - SCREEN_W / 3, 5 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 6 * SCREEN_H / 8};
-    rectangle main_menu_b = {SCREEN_W / 2 - SCREEN_W / 3, 7 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 8 * SCREEN_H / 8  - 20};
+    rectangle main_menu_b = {SCREEN_W / 2 - SCREEN_W / 3, 5 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 6 * SCREEN_H / 8};
+    rectangle quit_b = {SCREEN_W / 2 - SCREEN_W / 3, 7 * SCREEN_H / 8, SCREEN_W / 2 + SCREEN_W / 3, 8 * SCREEN_H / 8  - 20};
 
     bool saved = false;   /* edge-detect: prevents holding the mouse from spamming saves */
 

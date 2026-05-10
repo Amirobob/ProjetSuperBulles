@@ -8,7 +8,56 @@
 #define MAX_UPGRADES   4
 #define BALL_SIZES     3
 #define GAME_FPS       60
-#define LEVEL_TIME_SEC 100   /* per-level countdown; out of time = level lost */
+#define LEVEL_TIME_SEC 100   
+
+/* ---------- Tweakable game tuning (non per-level) ---------- */
+
+/* Player */
+#define PLAYER_START_HP             3
+#define PLAYER_START_SPEED          3
+#define PLAYER_JUMP_IMPULSE         -11.5f
+#define PLAYER_JUMP_HOLD            -0.5f   
+#define PLAYER_GRAVITY              0.5f
+#define PLAYER_MAX_FALL             12.0f
+#define PLAYER_DROP_TICKS           15      
+#define PLAYER_WALK_FRAME_TICKS     8
+#define PLAYER_SHOOT_COOLDOWN       (GAME_FPS / 3)
+#define PLAYER_SHOT_SPACING         10  /* horizontal gap between adjacent bullets */
+#define PLAYER_MAX_SHOTS            4   /* cap on bullets-per-fire from stacking UPG_BULLET */
+#define PLAYER_INVULN_TICKS         GAME_FPS   /* 1s grace after shield absorbs a hit */
+
+/* Bullet */
+#define BULLET_SPEED                -7.0f
+
+/* Ball */
+#define BALL_GRAVITY                0.15f
+#define BALL_FLOOR_POP              -10.0f
+#define BALL_SPLIT_VX               2.0f
+#define BALL_SPLIT_VY               -4.0f
+
+/* Upgrade */
+#define UPGRADE_DROP_CHANCE_PCT     15      
+#define UPGRADE_DROP_MIN_LEVEL      2       
+#define UPGRADE_FALL_SPEED          1.5f
+#define UPGRADE_HALF_SIZE           8
+#define UPGRADE_SPEED_BONUS         1
+
+/* Score */
+#define SCORE_BALL_SPLIT            25
+#define SCORE_BALL_DESTROY          100
+#define SCORE_BOSS_KILL             500
+#define SCORE_LEVEL_BASE            100     
+
+/* Countdown */
+#define COUNTDOWN_STEP_MS           1000
+
+/* Boss generic (per-level HP/start position stay in populate_level) */
+#define BOSS_PHASE0_SPEED_BASE      1.5f
+#define BOSS_PHASE1_SPEED_BASE      3.0f
+#define BOSS_PHASE2_SPEED           18.0f
+#define BOSS_PHASE0_SPAWN_SEC       4
+#define BOSS_PHASE1_SPAWN_SEC       3
+#define BOSS_PHASE2_SPAWN_SEC       2
 
 typedef enum { UPG_SPEED, UPG_HEALTH, UPG_BULLET, UPG_COUNT } UpgradeType;
 
@@ -19,12 +68,14 @@ typedef struct {
     int   hp;
     int   max_hp;
     int   speed;
-    bool  double_shot;
+    int   shots_per_fire;   /* 1 by default, +1 per UPG_BULLET picked up */
     int   frame;
     int   frame_timer;
     bool  facing_right;
     int   shoot_cooldown;
     int   drop_timer;   /* >0: falling through red platforms */
+    bool  has_second_life;  /* UPG_HEALTH: absorbs one fatal hit, tints player blue */
+    int   invuln_timer; /* >0: hit-absorb grace after shield break */
 } Player;
 
 typedef struct {
@@ -70,6 +121,7 @@ typedef struct {
     BITMAP *upg_health;
     BITMAP *upg_bullet;
     BITMAP *character[charframes];
+    BITMAP *character_blue[charframes];  /* pre-tinted variant shown while shielded */
     BITMAP *boss[bossframes];
 } GameAssets;
 
@@ -112,7 +164,7 @@ void update_balls(GameState *gs, GameAssets *a);
    size acts as a denominator: 1 = native boule sprite, 2 = half, 3 = third. */
 int ball_radius(GameAssets *a, int size);
 void update_boss(GameState *gs);
-void update_upgrades(GameState *gs);
+void update_upgrades(GameState *gs, GameAssets *a);
 
 /* spawn / lifecycle */
 void spawn_bullet(GameState *gs, float x, float y);
