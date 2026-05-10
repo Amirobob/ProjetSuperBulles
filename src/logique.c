@@ -3,13 +3,92 @@
 #include "affichage.h"
 #include "interface.h"
 
-/* Timer de fps qui ne dépend pas de la vitesse de rendu */
+/* Timer FPS independant de la vitesse de rendu. */
 static volatile int tick_counter = 0;
 static void tick_increment(void) { tick_counter++; }
 END_OF_FUNCTION(tick_increment);
 
 
-/* Seeds global state (username/level/score) that end_menu and HUD read from. */
+void dim_bitmap(BITMAP *bm, int factor_pct) {
+    for (int y = 0; y < bm->h; y++) {
+        for (int x = 0; x < bm->w; x++) {
+            int c = getpixel(bm, x, y);
+            int r = getr(c) * factor_pct / 100;
+            int g = getg(c) * factor_pct / 100;
+            int b = getb(c) * factor_pct / 100;
+            putpixel(bm, x, y, makecol(r, g, b));
+        }
+    }
+}
+
+static void victory_dance(BITMAP *buf, GameAssets *a) {
+    BITMAP *bg = create_bitmap(SCREEN_W, SCREEN_H);
+    if (!bg) return;
+
+    blit(buf, bg, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
+    dim_bitmap(bg, 30);
+
+    const int   total_frames  = 240;
+    const float orbit_rad_x   = 130.0f;
+    const float orbit_rad_y   = 70.0f;
+    const float orbit_rate    = 4.0f;
+    const float jump_amp      = 28.0f;
+    const float jump_rate     = 9.0f;
+    const int   cx = SCREEN_W / 2;
+    const int   cy = SCREEN_H / 2;
+
+    int frame_timer = 0, frame_idx = 0;
+
+    for (int f = 0; f < total_frames && !exit_flag; f++) {
+        blit(bg, buf, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
+
+        if (++frame_timer >= 6) {
+            frame_idx = (frame_idx + 1) % charframes;
+            frame_timer = 0;
+        }
+
+        float t = (float)f / 60.0f;
+        for (int i = 0; i < 3; i++) {
+            float phase = (float)i * (2.0f * 3.14159265f / 3.0f);
+            float angle = t * orbit_rate + phase;
+            float x = cx + orbit_rad_x * cosf(angle);
+            float y = cy + orbit_rad_y * sinf(angle);
+            y -= jump_amp * fabsf(sinf(t * jump_rate + phase));
+
+            BITMAP *spr = a->character[(frame_idx + i) % charframes];
+            int sx = (int)x - spr->w / 2;
+            int sy = (int)y - spr->h / 2;
+
+            bool facing_right = (-sinf(angle)) > 0.0f;
+            if (facing_right) draw_sprite(buf, spr, sx, sy);
+            else              draw_sprite_h_flip(buf, spr, sx, sy);
+        }
+
+        {
+            const char *title = "VICTORY!";
+            int gold = makecol(255, 220, 80);
+            int tw = text_length(font, title);
+            int th = text_height(font);
+            BITMAP *tmp = create_bitmap(tw + 2, th + 2);
+            if (tmp) {
+                int mask = bitmap_mask_color(tmp);
+                clear_to_color(tmp, mask);
+                textout_ex(tmp, font, title, 1, 1, gold, -1);
+                const int scale = 4;
+                int sw = (tw + 2) * scale;
+                int sh = (th + 2) * scale;
+                stretch_sprite(buf, tmp, cx - sw / 2, 80 - sh / 2, sw, sh);
+                destroy_bitmap(tmp);
+            }
+        }
+
+        blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
+        rest(16);
+    }
+
+    destroy_bitmap(bg);
+}
+
 void startgame(BITMAP *buf, const char *initial_username, int initial_level, int initial_score) {
     strcpy((char *)username, initial_username);
     level = initial_level;
@@ -29,15 +108,29 @@ void startgame(BITMAP *buf, const char *initial_username, int initial_level, int
         int outcome = game_loop(buf, &assets, &gs);
         if (outcome < 0) break;
 
-        end_menu(buf, outcome == 1);
-        if (exit_flag) break;
+        if (outcome == 1 && level == FINAL_LEVEL) {
+            score += 1000;
+            draw_game(buf, &assets, &gs);
+            BITMAP *dim_bg = create_bitmap(SCREEN_W, SCREEN_H);
+            if (dim_bg) {
+                blit(buf, dim_bg, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
+                dim_bitmap(dim_bg, 30);
+            }
+            victory_dance(buf, &assets);
+            bool keep = !exit_flag && final_victory_menu(buf, dim_bg);
+            if (dim_bg) destroy_bitmap(dim_bg);
+            if (!keep) break;
+            level++;
+            continue;
+        }
+
+        if (!end_menu(buf, outcome == 1)) break;
     }
 
     free_assets(&assets);
 }
 
 
-/* Freezes world to let player scout spawns. */
 static void countdown_intro(BITMAP *buf, GameAssets *a, GameState *gs) {
     static const char * const steps[] = {"3", "2", "1", "Go!"};
 
@@ -48,14 +141,12 @@ static void countdown_intro(BITMAP *buf, GameAssets *a, GameState *gs) {
                           makecol(255, 255, 80), -1);
         blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
 
-        /* split into 100ms slices so close-button stays responsive. */
         int slices = COUNTDOWN_STEP_MS / 100;
         for (int slice = 0; slice < slices && !exit_flag; slice++) rest(100);
     }
 }
 
 
-/* Returns: 1=won, 0=lost, -1=quit. */
 int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
     countdown_intro(buf, a, gs);
 
@@ -67,7 +158,6 @@ int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
     int outcome = -1;
     while (!exit_flag) {
 
-        /* run one update step per pending tick. if rendering was slow we catch up here. */
         while (tick_counter > 0) {
             handle_input(gs);
             if (!gs->paused) {
@@ -82,7 +172,6 @@ int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
             tick_counter--;
         }
 
-        /* draw once per loop */
         draw_game(buf, a, gs);
         vsync();
         blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
@@ -93,7 +182,6 @@ int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
         if (is_player_dead(gs))    { outcome = 0; break; }
         if (gs->level_timer <= 0)  { outcome = 0; break; }
         if (is_level_complete(gs)) {
-            /* per-level time bonus: faster wins get less, per the spec formula. */
             int seconds_left = gs->level_timer / GAME_FPS;
             if (seconds_left < 0) seconds_left = 0;
             score += SCORE_LEVEL_BASE - seconds_left;
@@ -107,7 +195,6 @@ int game_loop(BITMAP *buf, GameAssets *a, GameState *gs) {
 }
 
 
-/* Build a blue-tinted copy of a sprite for the second-life visual. */
 static BITMAP *make_blue_variant(BITMAP *src) {
     BITMAP *dst = create_bitmap(src->w, src->h);
     if (!dst) return NULL;
@@ -131,15 +218,18 @@ bool load_assets(GameAssets *a) {
     char path[256];
     memset(a, 0, sizeof(*a));
 
-    a->map        = load_bitmap("src/character/map.bmp", NULL);
-    a->mapalpha   = load_bitmap("src/character/mapalpha.bmp", NULL);
-    a->bullet     = load_bitmap("src/character/bullet.bmp", NULL);
-    a->boule      = load_bitmap("src/character/boule.bmp", NULL);
-    a->upg_speed  = load_bitmap("src/character/upgrade_speed.bmp", NULL);
-    a->upg_health = load_bitmap("src/character/upgrade_health.bmp", NULL);
-    a->upg_bullet = load_bitmap("src/character/upgrade_doubleshot.bmp", NULL);
+    a->map         = load_bitmap("src/character/map.bmp", NULL);
+    a->mapalpha    = load_bitmap("src/character/mapalpha.bmp", NULL);
+    a->bullet      = load_bitmap("src/character/bullet.bmp", NULL);
+    a->boule       = load_bitmap("src/character/boule.bmp", NULL);
+    a->upg_speed   = load_bitmap("src/character/upgrade_speed.bmp", NULL);
+    a->upg_health  = load_bitmap("src/character/upgrade_health.bmp", NULL);
+    a->upg_bullet  = load_bitmap("src/character/upgrade_doubleshot.bmp", NULL);
+    a->beam        = load_bitmap("src/character/beam.bmp", NULL);
+    a->exclamation = load_bitmap("src/character/exclamation.bmp", NULL);
     if (!a->map || !a->mapalpha || !a->bullet || !a->boule
-        || !a->upg_speed || !a->upg_health || !a->upg_bullet) return false;
+        || !a->upg_speed || !a->upg_health || !a->upg_bullet
+        || !a->beam || !a->exclamation) return false;
 
     for (int i = 0; i < charframes; i++) {
         sprintf(path, "src/character/character_%d.bmp", i);
@@ -169,16 +259,17 @@ void free_assets(GameAssets *a) {
     destroy_bitmap(a->upg_speed);
     destroy_bitmap(a->upg_health);
     destroy_bitmap(a->upg_bullet);
+    destroy_bitmap(a->beam);
+    destroy_bitmap(a->exclamation);
 }
 
 
-/* Player initialization. */
 void init_player(Player *p, GameAssets *a) {
     int map_left = SCREEN_W / 2 - a->map->w / 2;
     int map_top  = 0;
 
-    p->x = map_left + 80.0f;        
-    p->y = map_top  + a->map->h - 100.0f;  
+    p->x = map_left + 80.0f;
+    p->y = map_top  + a->map->h - 100.0f;
 
     p->vx = 0;
     p->vy = 0;
@@ -196,7 +287,6 @@ void init_player(Player *p, GameAssets *a) {
 }
 
 
-/* Level configuration. Edit each case to set spawns, boss, upgrades. */
 static void populate_level(GameState *gs, int level_num) {
     switch (level_num) {
         case 1:
@@ -215,7 +305,6 @@ static void populate_level(GameState *gs, int level_num) {
             break;
 
         case 4:
-            /* TODO: update_boss() moves and attacks. */
             gs->boss.active = true;
             gs->boss.hp     = 25;
             gs->boss.hp_max = 25;
@@ -224,19 +313,6 @@ static void populate_level(GameState *gs, int level_num) {
             gs->boss.vx     = 1.5f;
             gs->boss.phase  = 0;
             gs->boss.violent = false;
-            gs->boss.spawn_timer = 2 * GAME_FPS;
-            break;
-        
-        case 10:
-            /* TODO: update_boss() moves and attacks. */
-            gs->boss.active = true;
-            gs->boss.hp     = 45;
-            gs->boss.hp_max = 45;
-            gs->boss.x      = SCREEN_W / 2.0f;
-            gs->boss.y      = 150.0f;
-            gs->boss.vx     = 1.5f;
-            gs->boss.phase  = 0;
-            gs->boss.violent = true;
             gs->boss.spawn_timer = 2 * GAME_FPS;
             break;
 
@@ -250,27 +326,22 @@ static void populate_level(GameState *gs, int level_num) {
 }
 
 
-/* Initialize level state and run level-specific spawn logic. */
 void init_level(GameState *gs, GameAssets *a, int level_num) {
     init_player(&gs->player, a);
 
     memset(gs->bullets,  0, sizeof(gs->bullets));
     memset(gs->balls,    0, sizeof(gs->balls));
     memset(gs->upgrades, 0, sizeof(gs->upgrades));
-    memset(&gs->boss,    0, sizeof(gs->boss)); 
+    memset(&gs->boss,    0, sizeof(gs->boss));
     gs->boss.active = false;
     gs->active_balls = 0;
     gs->paused = false;
 
     gs->level_timer = LEVEL_TIME_SEC * GAME_FPS;
-    gs->pipe_spawn_timer[0] = 60;
-    gs->pipe_spawn_timer[1] = 75;
-    gs->pipe_spawn_timer[2] = 90;
     populate_level(gs, level_num);
 }
 
 
-/* Level complete when all balls killed and boss dead. */
 bool is_level_complete(const GameState *gs) {
     return gs->active_balls == 0 && !gs->boss.active;
 }
@@ -278,7 +349,6 @@ bool is_level_complete(const GameState *gs) {
 bool is_player_dead(const GameState *gs) { return gs->player.hp <= 0; }
 
 
-/* Read keyboard and update player movement/shooting. */
 void handle_input(GameState *gs) {
     Player *p = &gs->player;
 
@@ -306,9 +376,7 @@ void handle_input(GameState *gs) {
 }
 
 
-/* ---------- updates: each runs once per tick ---------- */
-
-/* mapalpha convention: black=wall, white=empty, red=platform (player only). */
+/* mapalpha : noir = mur, blanc = vide, rouge = plateforme (joueur seulement). */
 static bool is_solid_pixel(GameAssets *a, int sx, int sy, bool platforms_solid) {
     BITMAP *m = a->mapalpha;
     int ox = SCREEN_W / 2 - a->map->w / 2;
@@ -322,7 +390,6 @@ static bool is_solid_pixel(GameAssets *a, int sx, int sy, bool platforms_solid) 
     return false;
 }
 
-/* Perimeter collision sampling. */
 static bool box_hits(GameAssets *a, int x, int y, int w, int h, bool platforms_solid) {
     const int step  = 4;
     const int x_end = x + w - 1;
@@ -391,12 +458,11 @@ void update_bullets(GameState *gs, GameAssets *a) {
     }
 }
 
-/* Size is denominator: 1=full, 2=half, 3=third of sprite. */
+/* size sert de denominateur : 1 = sprite plein, 2 = moitie, 3 = tiers. */
 int ball_radius(GameAssets *a, int size) {
     return (a->boule->w / 2) / size;
 }
 
-/* 8-point compass sample of ball perimeter. */
 static bool ball_hits_map(GameAssets *a, int cx, int cy, int r) {
     static const int dx[8] = { 0,  1, 1, 1, 0, -1, -1, -1 };
     static const int dy[8] = {-1, -1, 0, 1, 1,  1,  0, -1 };
@@ -413,6 +479,24 @@ void update_balls(GameState *gs, GameAssets *a) {
     for (int i = 0; i < MAX_BALLS; i++) {
         Ball *b = &gs->balls[i];
         if (!b->active) continue;
+
+        if (level >= BALL_BEAM_MIN_LEVEL) {
+            if (b->attack_timer > 0) b->attack_timer--;
+            if (b->attack_timer == 0) {
+                if (b->attack_state == BALL_MOVING) {
+                    b->attack_state = BALL_WARNING;
+                    b->attack_timer = BALL_WARNING_TICKS;
+                } else if (b->attack_state == BALL_WARNING) {
+                    b->attack_state = BALL_FIRING;
+                    b->attack_timer = BALL_BEAM_DURATION_TICKS;
+                } else {
+                    b->attack_state = BALL_MOVING;
+                    b->attack_timer = BALL_ATTACK_COOLDOWN_TICKS;
+                }
+            }
+        }
+
+        if (b->attack_state != BALL_MOVING) continue;
 
         b->vy += gravity;
 
@@ -433,58 +517,63 @@ void update_balls(GameState *gs, GameAssets *a) {
     }
 }
 
+static float boss_speed_mult(const Boss *b) {
+    if (b->hp_max <= 0) return 1.0f;
+    float frac_lost = 1.0f - (float)b->hp / (float)b->hp_max;
+    if (frac_lost < 0) frac_lost = 0;
+    if (frac_lost > 1) frac_lost = 1;
+    return 1.0f + frac_lost * BOSS_HURT_SPEED_BOOST;
+}
+
+static int biased_dir(float boss_pos, float target_pos) {
+    if ((rand() % 100) < BOSS_NUDGE_BIAS_PCT) {
+        return (target_pos > boss_pos) ? 1 : -1;
+    }
+    return (rand() % 2 == 0) ? 1 : -1;
+}
+
+static void clamp_boss(Boss *b) {
+    if (b->x < 0)        { b->x = 0;        b->vx =  fabsf(b->vx); }
+    if (b->x > SCREEN_W) { b->x = SCREEN_W; b->vx = -fabsf(b->vx); }
+    if (b->y < 0)        { b->y = 0;        b->vy =  fabsf(b->vy); }
+    if (b->y > SCREEN_H) { b->y = SCREEN_H; b->vy = -fabsf(b->vy); }
+}
+
 void update_boss(GameState *gs) {
     Boss *b = &gs->boss;
     if (!b->active) return;
 
-    if(b->phase == 0) {
-        b->attack_timer--;
+    float mult = boss_speed_mult(b);
+    float px = gs->player.x, py = gs->player.y;
+
+    b->attack_timer--;
+    if (b->phase == 0) {
         if (b->attack_timer <= 0) {
             b->attack_timer = GAME_FPS + rand() % (2 * GAME_FPS);
-            float speed = BOSS_PHASE0_SPEED_BASE + (rand() % 30) / 10.0f;
-            b->vx = (rand() % 2 == 0) ? speed : -speed;
+            float speed = (BOSS_PHASE0_SPEED_BASE + (rand() % 30) / 10.0f) * mult;
+            b->vx = biased_dir(b->x, px) * speed;
         }
-
         b->x += b->vx;
-        if (b->x < 0)        { b->x = 0;        b->vx =  fabsf(b->vx); }
-        if (b->x > SCREEN_W) { b->x = SCREEN_W; b->vx = -fabsf(b->vx); }
-
-    } else if(b->phase == 1) {
-        b->attack_timer--;
+    } else if (b->phase == 1) {
         if (b->attack_timer <= 0) {
             b->attack_timer = GAME_FPS / 2 + rand() % GAME_FPS;
-            float speed = BOSS_PHASE1_SPEED_BASE + (rand() % 30) / 10.0f;
-            b->vx = (rand() % 2 == 0) ?  speed : -speed;
-            b->vy = (rand() % 2 == 0) ?  speed : -speed;
+            float speed = (BOSS_PHASE1_SPEED_BASE + (rand() % 30) / 10.0f) * mult;
+            b->vx = biased_dir(b->x, px) * speed;
+            b->vy = biased_dir(b->y, py) * speed;
         }
-
         b->x += b->vx;
         b->y += b->vy;
-        if (b->x < 0)        { b->x = 0;        b->vx =  fabsf(b->vx); }
-        if (b->x > SCREEN_W) { b->x = SCREEN_W; b->vx = -fabsf(b->vx); }
-        if (b->y < 0)        { b->y = 0;        b->vy =  fabsf(b->vy); }
-        if (b->y > SCREEN_H) { b->y = SCREEN_H; b->vy = -fabsf(b->vy); }
-
-    } else if (b->phase == 2) {
-        b->attack_timer--;
+    } else {
         if (b->attack_timer <= 0) {
             b->attack_timer = (int)(7.5f * GAME_FPS);
-
-            float spd = BOSS_PHASE2_SPEED;
-            if (rand() % 2 == 0) {
-                b->vx =  spd; b->vy =  spd;
-            } else {
-                b->vx = -spd; b->vy =  spd;
-            }
+            float spd = BOSS_PHASE2_SPEED * mult;
+            b->vx = biased_dir(b->x, px) * spd;
+            b->vy = spd;
         }
-
         b->x += b->vx;
         b->y += b->vy;
-        if (b->x < 0)        { b->x = 0;        b->vx =  fabsf(b->vx); }
-        if (b->x > SCREEN_W) { b->x = SCREEN_W; b->vx = -fabsf(b->vx); }
-        if (b->y < 0)        { b->y = 0;        b->vy =  fabsf(b->vy); }
-        if (b->y > SCREEN_H) { b->y = SCREEN_H; b->vy = -fabsf(b->vy); }
     }
+    clamp_boss(b);
 
     b->spawn_timer--;
     if (b->spawn_timer <= 0) {
@@ -529,7 +618,7 @@ void spawn_bullet(GameState *gs, float x, float y) {
         if (gs->bullets[i].active == false) {
             gs->bullets[i].x = x;
             gs->bullets[i].y = y;
-            gs->bullets[i].vy = BULLET_SPEED;  /* shoot upward */
+            gs->bullets[i].vy = BULLET_SPEED;
             gs->bullets[i].active = true;
             break;
         }
@@ -545,21 +634,15 @@ void spawn_ball(GameState *gs, float x, float y, float vx, float vy, int size) {
             gs->balls[i].vy = vy;
             gs->balls[i].active = true;
             gs->balls[i].size = size;
+            gs->balls[i].attack_state = BALL_MOVING;
+            gs->balls[i].attack_timer =
+                BALL_ATTACK_COOLDOWN_TICKS / 2 + rand() % BALL_ATTACK_COOLDOWN_TICKS;
             gs->active_balls++;
             break;
         }
     }
 }
 
-void spawn_from_pipe(GameState *gs, float pipe_x, float pipe_y) {
-    float angle = (rand() % 360) * 3.14159f / 180.0f;
-    float speed = 2.0f + (rand() % 3);
-    float vx = cosf(angle) * speed;
-    float vy = sinf(angle) * speed;
-    spawn_ball(gs, pipe_x, pipe_y, vx, vy, 1);
-}
-
-/* Bullet hit ball: destroy if size==3, else spawn two smaller children. */
 void split_ball(GameState *gs, int idx) {
     Ball *b = &gs->balls[idx];
     int parent_size = b->size;
@@ -567,14 +650,12 @@ void split_ball(GameState *gs, int idx) {
     b->active = false;
     gs->active_balls--;
 
-    /* Size 3 is smallest. */
     if (parent_size < 3) {
         spawn_ball(gs, b->x, b->y,  BALL_SPLIT_VX, BALL_SPLIT_VY, parent_size + 1);
         spawn_ball(gs, b->x, b->y, -BALL_SPLIT_VX, BALL_SPLIT_VY, parent_size + 1);
         score += SCORE_BALL_SPLIT;
     } else {
         score += SCORE_BALL_DESTROY;
-        /* Smallest ball fully destroyed: chance to drop an upgrade from level 2 onward. */
         if (level >= UPGRADE_DROP_MIN_LEVEL && rand() % 100 < UPGRADE_DROP_CHANCE_PCT) {
             spawn_upgrade(gs, b->x, b->y);
         }
@@ -631,11 +712,9 @@ void check_collisions(GameState *gs, GameAssets *a) {
             if (dx*dx + dy*dy < (float)(boss_r * boss_r)) {
                 gs->bullets[i].active = false;
                 gs->boss.hp--;
-                if((gs->boss.hp <= 35 && gs->boss.phase == 0 && gs->boss.violent )|| (gs->boss.hp <= 15 && gs->boss.phase == 1 && !gs->boss.violent)) {
-                    gs->boss.phase = 1;
-                }
-                if(gs->boss.hp <= 20 && gs->boss.phase == 1 && gs->boss.violent) {
-                    gs->boss.phase = 2;
+                if (gs->boss.violent) {
+                    if (gs->boss.phase == 0 && gs->boss.hp <= 35) gs->boss.phase = 1;
+                    if (gs->boss.phase == 1 && gs->boss.hp <= 20) gs->boss.phase = 2;
                 }
                 if (gs->boss.hp <= 0) {
                     gs->boss.active = false;
@@ -692,4 +771,20 @@ void check_collisions(GameState *gs, GameAssets *a) {
         }
     }
 
+    for (int j = 0; j < MAX_BALLS; j++) {
+        Ball *b = &gs->balls[j];
+        if (!b->active || b->attack_state != BALL_FIRING) continue;
+        if (gs->player.invuln_timer > 0) continue;
+        int half_w = (a->beam->w / 2) / b->size;
+        if (gs->player.x >= b->x - half_w && gs->player.x <= b->x + half_w
+            && gs->player.y >= b->y) {
+            if (gs->player.has_second_life) {
+                gs->player.has_second_life = false;
+                gs->player.invuln_timer = PLAYER_INVULN_TICKS;
+            } else {
+                gs->player.hp = 0;
+            }
+            return;
+        }
+    }
 }

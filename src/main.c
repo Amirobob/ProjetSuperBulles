@@ -3,7 +3,7 @@
 
 volatile bool exit_flag = false;
 volatile int score = 0;
-volatile char username[20] = "";
+char username[20] = "";
 volatile int level = 1;
 
 void time_to_exit(void) {
@@ -18,7 +18,7 @@ void initialisation_allegro() {
     install_mouse();
     set_color_depth(desktop_color_depth());
     if (set_gfx_mode(GFX_AUTODETECT_WINDOWED, 1080, 720, 0, 0) != 0) {
-        allegro_message("probleme mode graphique");
+        allegro_message("graphics mode error");
         allegro_exit();
         exit(EXIT_FAILURE);
     }

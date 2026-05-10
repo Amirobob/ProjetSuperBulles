@@ -1,4 +1,3 @@
-//inclusive.h à tous les variables globales dans un seul lieu
 #ifndef INCLUSIVE_H
 #define INCLUSIVE_H
 
@@ -11,7 +10,7 @@
 #include <stdlib.h>
 extern volatile bool exit_flag;
 extern volatile int score;
-extern volatile char username[20];
+extern  char username[20];
 extern volatile int level;
 
 #define charframes 3

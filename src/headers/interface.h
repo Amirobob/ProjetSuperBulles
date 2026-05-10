@@ -6,7 +6,8 @@
 void main_menu(BITMAP *buf);
 void enter_name(BITMAP *buf);
 void find_save_file(BITMAP *buf);
-void end_menu(BITMAP *buf, bool won);
+bool end_menu(BITMAP *buf, bool won);
+bool final_victory_menu(BITMAP *buf, BITMAP *bg);
 void make_button(BITMAP *buf, int x1, int y1, int x2, int y2, const char *label, bool hovered);
 
 #endif

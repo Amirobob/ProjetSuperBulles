@@ -1,22 +1,10 @@
-//gestion des fichiers, chargement/sauvegarde du jeu par pseudo du joueur
 #include <inclusive.h>
 #include "fichiers.h"
 #define SAVE_FILE "sauvegardes.txt"
-#define MAX_NAME_LEN 20
-#define MAX_SAVES 50
-// Structure de sauvegarde
-typedef struct {
-    char pseudo[MAX_NAME_LEN];
-    int  niveau;
-    int  score;
-} SaveEntry;
 
-// Fonctions utilitaires internes (non exposees dans le .h)
-// Charge toutes les sauvegardes. Retourne -1 si le fichier contient plus
-// de `max` entrees (refus d'ecrire pour ne pas tronquer les donnees).
-static int charger_toutes_sauvegardes(SaveEntry entries[], int max) {
+int lister_sauvegardes(SaveEntry entries[], int max) {
     FILE *f = fopen(SAVE_FILE, "r");
-    if (!f) return 0;   // Pas de fichier = aucune sauvegarde, ce n'est pas une erreur
+    if (!f) return 0;
 
     int count = 0;
     while (count < max &&
@@ -32,8 +20,6 @@ static int charger_toutes_sauvegardes(SaveEntry entries[], int max) {
     return overflow ? -1 : count;
 }
 
-// Ecrit toutes les sauvegardes du tableau dans le fichier (ecrasement complet).
-// Retourne true en cas de succes
 static bool ecrire_toutes_sauvegardes(const SaveEntry entries[], int count) {
     FILE *f = fopen(SAVE_FILE, "w");
     if (!f) return false;
@@ -44,14 +30,12 @@ static bool ecrire_toutes_sauvegardes(const SaveEntry entries[], int count) {
     fclose(f);
     return true;
 }
-// Sauvegarde une partie (pseudo + dernier niveau atteint + score).
-// Si le pseudo existe deja, on met a jour son entree si le niveau est meilleur.
+
 bool sauvegarder_partie(const char *pseudo, int niveau, int score) {
     SaveEntry entries[MAX_SAVES];
-    int count = charger_toutes_sauvegardes(entries, MAX_SAVES);
-    if (count < 0) return false;  // fichier plein, on refuse pour ne rien perdre
+    int count = lister_sauvegardes(entries, MAX_SAVES);
+    if (count < 0) return false;
 
-    // Cherche si le pseudo existe
     bool trouve = false;
     for (int i = 0; i < count; i++) {
         if (strcmp(entries[i].pseudo, pseudo) == 0) {
@@ -64,7 +48,6 @@ bool sauvegarder_partie(const char *pseudo, int niveau, int score) {
             break;
         }
     }
-    // Nouveau joueur
     if (!trouve && count < MAX_SAVES) {
         strncpy(entries[count].pseudo, pseudo, MAX_NAME_LEN - 1);
         entries[count].pseudo[MAX_NAME_LEN - 1] = '\0';
@@ -75,11 +58,10 @@ bool sauvegarder_partie(const char *pseudo, int niveau, int score) {
 
     return ecrire_toutes_sauvegardes(entries, count);
 }
-// Charge la sauvegarde d'un joueur a partir de son pseudo.
-// Remplit *niveau_out et *score_out si la sauvegarde existe.
+
 LoadResult charger_partie(const char *pseudo, int *niveau_out, int *score_out) {
     SaveEntry entries[MAX_SAVES];
-    int count = charger_toutes_sauvegardes(entries, MAX_SAVES);
+    int count = lister_sauvegardes(entries, MAX_SAVES);
     if (count < 0) return LOAD_ERROR;
 
     for (int i = 0; i < count; i++) {
@@ -91,11 +73,11 @@ LoadResult charger_partie(const char *pseudo, int *niveau_out, int *score_out) {
     }
     return LOAD_NOT_FOUND;
 }
-// Supprime la sauvegarde d'un joueur 
+
 bool supprimer_sauvegarde(const char *pseudo) {
     SaveEntry entries[MAX_SAVES];
-    int count = charger_toutes_sauvegardes(entries, MAX_SAVES);
-    if (count <= 0) return false;  // 0 = vide, -1 = trop d'entrees
+    int count = lister_sauvegardes(entries, MAX_SAVES);
+    if (count <= 0) return false;
 
     int idx = -1;
     for (int i = 0; i < count; i++) {
@@ -111,21 +93,18 @@ bool supprimer_sauvegarde(const char *pseudo) {
     count--;
     return ecrire_toutes_sauvegardes(entries, count);
 }
-// Attend qu'une touche soit pressee ou qu'on relache puis cliqe la souris.
-// Indispensable apres un changement d'ecran : on draine le clic qui a ouvert
-// l'ecran avant ET apres, sinon le clic est repris par le menu suivant.
+
 static void wait_for_dismiss(void) {
-    while ((mouse_b & 1) && !exit_flag) vsync();   // attend que le clic d'avant soit relache
+    while ((mouse_b & 1) && !exit_flag) vsync();
     clear_keybuf();
     while (!exit_flag) {
         vsync();
         if (keypressed())  { readkey(); break; }
         if (mouse_b & 1)   { break; }
     }
-    while ((mouse_b & 1) && !exit_flag) vsync();   // ne pas refiler le clic au menu suivant
+    while ((mouse_b & 1) && !exit_flag) vsync();
 }
 
-// Affiche un ecran centre avec un titre, un detail optionnel, et attend l'input.
 static void afficher_message(BITMAP *buf, const char *titre, const char *detail, int couleur_titre) {
     clear_to_color(buf, makecol(0, 20, 20));
     textout_centre_ex(buf, font, titre,
@@ -134,7 +113,7 @@ static void afficher_message(BITMAP *buf, const char *titre, const char *detail,
         textout_centre_ex(buf, font, detail,
                           SCREEN_W / 2, SCREEN_H / 2, makecol(220, 220, 220), -1);
     }
-    textout_centre_ex(buf, font, "Appuyez sur une touche pour continuer.",
+    textout_centre_ex(buf, font, "Press any key to continue.",
                       SCREEN_W / 2, SCREEN_H / 2 + 30, makecol(180, 180, 180), -1);
     blit(buf, screen, 0, 0, 0, 0, SCREEN_W, SCREEN_H);
     wait_for_dismiss();
@@ -142,20 +121,20 @@ static void afficher_message(BITMAP *buf, const char *titre, const char *detail,
 
 void afficher_erreur_chargement(BITMAP *buf, const char *pseudo) {
     char msg[64];
-    snprintf(msg, sizeof(msg), "Aucune sauvegarde trouvee pour : %s", pseudo);
+    snprintf(msg, sizeof(msg), "No save found for: %s", pseudo);
     afficher_message(buf, msg, NULL, makecol(255, 80, 80));
 }
 
 void afficher_chargement_succes(BITMAP *buf, const char *pseudo, int niveau, int score) {
     char titre[64], details[64];
-    snprintf(titre,   sizeof(titre),   "Sauvegarde chargee : %s", pseudo);
-    snprintf(details, sizeof(details), "Niveau %d   Score %d", niveau, score);
+    snprintf(titre,   sizeof(titre),   "Save loaded: %s", pseudo);
+    snprintf(details, sizeof(details), "Level %d   Score %d", niveau, score);
     afficher_message(buf, titre, details, makecol(120, 220, 120));
 }
 
 void afficher_save_succes(BITMAP *buf, const char *pseudo, int niveau, int score) {
     char titre[64], details[64];
-    snprintf(titre,   sizeof(titre),   "Partie sauvegardee : %s", pseudo);
-    snprintf(details, sizeof(details), "Niveau %d   Score %d", niveau, score);
+    snprintf(titre,   sizeof(titre),   "Game saved: %s", pseudo);
+    snprintf(details, sizeof(details), "Level %d   Score %d", niveau, score);
     afficher_message(buf, titre, details, makecol(120, 220, 120));
 }
