@@ -570,8 +570,6 @@ void update_boss(GameState *gs) {
         if (b->attack_timer <= 0) {
             b->attack_timer = GAME_FPS / 2 + rand() % GAME_FPS;
             float speed = (BOSS_PHASE1_SPEED_BASE + (rand() % 30) / 10.0f) * mult;
-            b->vx = biased_dir(b->x, px) * speed;
-            b->vy = biased_dir(b->y, py) * speed;
         }
         b->x += b->vx;
         b->y += b->vy;
@@ -579,7 +577,6 @@ void update_boss(GameState *gs) {
         if (b->attack_timer <= 0) {
             b->attack_timer = (int)(7.5f * GAME_FPS);
             float spd = BOSS_PHASE2_SPEED * mult;
-            b->vx = biased_dir(b->x, px) * spd;
             b->vy = spd;
         }
         b->x += b->vx;
