@@ -18,9 +18,9 @@
 #define PLAYER_MAX_FALL             12.0f
 #define PLAYER_DROP_TICKS           15
 #define PLAYER_WALK_FRAME_TICKS     8
-#define PLAYER_SHOOT_COOLDOWN       (GAME_FPS / 3)
+#define PLAYER_SHOOT_COOLDOWN       (GAME_FPS / 6)
 #define PLAYER_SHOT_SPACING         10
-#define PLAYER_MAX_SHOTS            4
+#define PLAYER_MAX_SHOTS            8
 #define PLAYER_INVULN_TICKS         GAME_FPS
 
 #define BULLET_SPEED                -7.0f
