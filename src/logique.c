@@ -316,6 +316,18 @@ static void populate_level(GameState *gs, int level_num) {
             gs->boss.spawn_timer = 2 * GAME_FPS;
             break;
 
+        case 10:
+            gs->boss.active = true;
+            gs->boss.hp     = 45;
+            gs->boss.hp_max = 45;
+            gs->boss.x      = SCREEN_W / 2.0f;
+            gs->boss.y      = 150.0f;
+            gs->boss.vx     = 1.5f;
+            gs->boss.phase  = 0;
+            gs->boss.violent = true;
+            gs->boss.spawn_timer = 2 * GAME_FPS;
+            break;
+        
         default:
             for (int i = 0; i < (level_num < 8 ? level_num : 8); i++) {
                 float dir = (i % 2 == 0) ? 2.0f : -2.0f;
