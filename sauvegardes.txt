@@ -1,5 +1,5 @@
 Amirobob 4 1076
-max 4 25
+max 10 25
 123 2 493
 abcd 3 275
 123abcsaywithme 1 491

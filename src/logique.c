@@ -727,6 +727,8 @@ void check_collisions(GameState *gs, GameAssets *a) {
                 if (gs->boss.violent) {
                     if (gs->boss.phase == 0 && gs->boss.hp <= 35) gs->boss.phase = 1;
                     if (gs->boss.phase == 1 && gs->boss.hp <= 20) gs->boss.phase = 2;
+                }else{
+                    if (gs->boss.phase == 0 && gs->boss.hp <= 15) gs->boss.phase = 1;
                 }
                 if (gs->boss.hp <= 0) {
                     gs->boss.active = false;
