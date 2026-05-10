@@ -586,25 +586,26 @@ void update_boss(GameState *gs) {
         b->y += b->vy;
     }
     clamp_boss(b);
+    if(b->y < SCREEN_H - 150){
+        b->spawn_timer--;
+        if (b->spawn_timer <= 0) {
+            if (b->phase == 0) {
+                b->spawn_timer = BOSS_PHASE0_SPAWN_SEC * GAME_FPS;
+                float vx = (rand() % 2 == 0) ? 2.0f : -2.0f;
+                spawn_ball(gs, b->x, b->y, vx, 0.0f, 2);
 
-    b->spawn_timer--;
-    if (b->spawn_timer <= 0) {
-        if (b->phase == 0) {
-            b->spawn_timer = BOSS_PHASE0_SPAWN_SEC * GAME_FPS;
-            float vx = (rand() % 2 == 0) ? 2.0f : -2.0f;
-            spawn_ball(gs, b->x, b->y, vx, 0.0f, 2);
+            } else if (b->phase == 1) {
+                b->spawn_timer = BOSS_PHASE1_SPAWN_SEC * GAME_FPS;
+                spawn_ball(gs, b->x, b->y,  2.5f, -1.0f, 2);
+                spawn_ball(gs, b->x, b->y, -2.5f, -1.0f, 2);
 
-        } else if (b->phase == 1) {
-            b->spawn_timer = BOSS_PHASE1_SPAWN_SEC * GAME_FPS;
-            spawn_ball(gs, b->x, b->y,  2.5f, -1.0f, 2);
-            spawn_ball(gs, b->x, b->y, -2.5f, -1.0f, 2);
-
-        } else if (b->phase == 2) {
-            b->spawn_timer = BOSS_PHASE2_SPAWN_SEC * GAME_FPS;
-            spawn_ball(gs, b->x, b->y,  3.0f,  0.0f, 3);
-            spawn_ball(gs, b->x, b->y, -3.0f,  0.0f, 3);
-            spawn_ball(gs, b->x, b->y,  0.0f,  3.0f, 3);
-            spawn_ball(gs, b->x, b->y,  0.0f, -3.0f, 3);
+            } else if (b->phase == 2) {
+                b->spawn_timer = BOSS_PHASE2_SPAWN_SEC * GAME_FPS;
+                spawn_ball(gs, b->x, b->y,  3.0f,  0.0f, 3);
+                spawn_ball(gs, b->x, b->y, -3.0f,  0.0f, 3);
+                spawn_ball(gs, b->x, b->y,  0.0f,  3.0f, 3);
+                spawn_ball(gs, b->x, b->y,  0.0f, -3.0f, 3);
+            }
         }
     }
 }
