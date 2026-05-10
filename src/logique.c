@@ -537,8 +537,8 @@ static float boss_speed_mult(const Boss *b) {
     return 1.0f + frac_lost * BOSS_HURT_SPEED_BOOST;
 }
 
-static int biased_dir(float boss_pos, float target_pos) {
-    if ((rand() % 100) < BOSS_NUDGE_BIAS_PCT) {
+static int biased_dir(float boss_pos, float target_pos, int nudge_bias_pct) {
+    if ((rand() % 100) < nudge_bias_pct) {
         return (target_pos > boss_pos) ? 1 : -1;
     }
     return (rand() % 2 == 0) ? 1 : -1;
@@ -563,13 +563,15 @@ void update_boss(GameState *gs) {
         if (b->attack_timer <= 0) {
             b->attack_timer = GAME_FPS + rand() % (2 * GAME_FPS);
             float speed = (BOSS_PHASE0_SPEED_BASE + (rand() % 30) / 10.0f) * mult;
-            b->vx = biased_dir(b->x, px) * speed;
+            b->vx = biased_dir(b->x, px, BOSS_NUDGE_BIAS_PCT) * speed;
         }
         b->x += b->vx;
     } else if (b->phase == 1) {
         if (b->attack_timer <= 0) {
             b->attack_timer = GAME_FPS / 2 + rand() % GAME_FPS;
             float speed = (BOSS_PHASE1_SPEED_BASE + (rand() % 30) / 10.0f) * mult;
+            b->vx = biased_dir(b->x, px, 0) * speed;
+            b->vy = biased_dir(b->y, py, 0) * speed;
         }
         b->x += b->vx;
         b->y += b->vy;
@@ -577,6 +579,7 @@ void update_boss(GameState *gs) {
         if (b->attack_timer <= 0) {
             b->attack_timer = (int)(7.5f * GAME_FPS);
             float spd = BOSS_PHASE2_SPEED * mult;
+            b->vx = biased_dir(b->x, px, 0) * spd;
             b->vy = spd;
         }
         b->x += b->vx;
